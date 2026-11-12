@@ -1,0 +1,30 @@
+{
+  "name": "delphi",
+  "private": true,
+  "engines": { "node": ">=26" },
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "agents/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "setup:devnet": "tsx scripts/setup-devnet.ts",
+    "forecaster": "npm run dev -w @delphi/forecaster",
+    "indexer": "npm run dev -w @delphi/indexer",
+    "resolver": "npm run dev -w @delphi/resolver",
+    "buyer": "npm run dev -w @delphi/buyer",
+    "web": "npm run dev -w @delphi/web",
+    "build": "npm run build -w @delphi/web",
+    "build:program": "bash -c 'export PATH=\"$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH\"; cd programs/delphi && anchor build'",
+    "test:program": "bash -c 'export PATH=\"$HOME/.cargo/bin:$PATH\"; cd programs/delphi && cargo test'",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "tsc -p packages/shared && tsc -p services/forecaster && tsc -p services/indexer && tsc -p services/resolver && tsc -p agents/buyer && tsc -p apps/web --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

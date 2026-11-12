@@ -1,0 +1,11 @@
+{
+  "name": "@delphi/forecaster",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {"./store": "./src/store.ts"},
+  "scripts": {"dev": "tsx src/index.ts", "start": "tsx src/index.ts", "setup": "tsx ../../scripts/setup-devnet.ts", "test": "tsx --test src/strategy.test.ts"},
+  "dependencies": {"@delphi/shared": "*", "@solana/web3.js": "^1.98.4", "@solana/spl-token": "^0.4.14", "@solana/kit": "^8.0.0", "@x402/express": "2.30.0", "@x402/core": "2.30.0", "@x402/svm": "2.30.0", "better-sqlite3": "^13.1.1", "express": "^4.21.2"},
+  "devDependencies": {"@types/better-sqlite3": "^7.6.13", "@types/express": "^4.17.21", "@types/node": "^26.0.0", "tsx": "^4.20.0", "typescript": "^5.9.3"}
+}

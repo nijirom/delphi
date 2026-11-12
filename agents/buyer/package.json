@@ -1,0 +1,10 @@
+{
+  "name": "@delphi/buyer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "dev": "tsx src/index.ts", "start": "tsx src/index.ts", "test": "tsx --test src/guardrails.test.ts", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@delphi/shared": "*", "@solana/kit": "^8.0.0", "@solana/web3.js": "^1.98.4", "@x402/core": "2.30.0", "@x402/fetch": "2.30.0", "@x402/svm": "2.30.0", "better-sqlite3": "^13.1.1", "bs58": "^6.0.0", "decimal.js": "^10.6.0" },
+  "devDependencies": { "@types/better-sqlite3": "^7.6.13", "@types/node": "^26.0.0", "tsx": "^4.20.0", "typescript": "^5.9.0" }
+}

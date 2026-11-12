@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+keys/
+data/
+*.sqlite
+*.sqlite-*
+programs/delphi/target/
+programs/delphi/.anchor/
+programs/delphi/test-ledger/
+.DS_Store

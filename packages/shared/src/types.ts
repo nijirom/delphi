@@ -1,0 +1,5 @@
+export type ForecastListing = { forecastPda: string; forecasterPda: string; forecasterAuthority: string; forecasterName: string; instrumentSymbol: string; pricePerReadUsdc: number; reputationBps: number; scoredCount: number; postedAt: number; url: string };
+export type PaidForecast = { forecastPda: string; instrumentSymbol: string; probBps: number; salt: string; rationale: string; forecasterName: string; paymentSig?: string };
+export type IndexerEvent = { id: number; slot: number; signature: string; ts: number; kind: 'forecast_posted' | 'purchase_recorded' | 'market_resolved' | 'forecast_scored' | 'usdc_transfer'; data: Record<string, unknown> };
+export type LeaderboardRow = { forecasterPda: string; authority: string; name: string; reputationBps: number; scoredCount: number; totalReads: number; earnedUsdc: number };
+export type AgentTelemetry = { ts: number; stage: 'scan' | 'buy' | 'aggregate' | 'decide' | 'approve' | 'trade' | 'skip' | 'error'; instrumentSymbol?: string; detail: Record<string, unknown> };

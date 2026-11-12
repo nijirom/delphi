@@ -1,0 +1,22 @@
+skip_local_validator = true
+
+[toolchain]
+
+[features]
+resolution = false
+skip-lint = false
+
+[programs.localnet]
+delphi = "EVqrBtTWaQiwnrhXzDgqr5TML6oDpHqHs5jjeLLg42Qc"
+
+[programs.devnet]
+delphi = "EVqrBtTWaQiwnrhXzDgqr5TML6oDpHqHs5jjeLLg42Qc"
+
+[provider]
+cluster = "devnet"
+wallet = "../../keys/oracle.json"
+
+[scripts]
+test = "cargo test"
+
+[hooks]

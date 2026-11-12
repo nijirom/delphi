@@ -1,0 +1,858 @@
+{
+  "address": "EVqrBtTWaQiwnrhXzDgqr5TML6oDpHqHs5jjeLLg42Qc",
+  "metadata": {
+    "name": "delphi",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Delphi forecast micro-market: commit/reveal forecasts, Brier scoring, forecaster reputation"
+  },
+  "instructions": [
+    {
+      "name": "init_market",
+      "discriminator": [
+        33,
+        253,
+        15,
+        116,
+        89,
+        25,
+        127,
+        236
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "instrument_symbol",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "post_forecast",
+      "discriminator": [
+        231,
+        10,
+        95,
+        202,
+        169,
+        241,
+        214,
+        111
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "forecast",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "record_purchase",
+      "discriminator": [
+        107,
+        25,
+        137,
+        125,
+        231,
+        17,
+        11,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "forecast",
+          "writable": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "purchase",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "payment_sig",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "register_forecaster",
+      "discriminator": [
+        188,
+        99,
+        120,
+        241,
+        101,
+        148,
+        216,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "price_per_read",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "resolve_market",
+      "discriminator": [
+        155,
+        23,
+        80,
+        173,
+        46,
+        74,
+        23,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome_yes",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "reveal_and_score",
+      "discriminator": [
+        218,
+        101,
+        197,
+        89,
+        233,
+        8,
+        59,
+        229
+      ],
+      "accounts": [
+        {
+          "name": "forecast",
+          "writable": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        },
+        {
+          "name": "market"
+        }
+      ],
+      "args": [
+        {
+          "name": "prob_bps",
+          "type": "u16"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_forecaster",
+      "discriminator": [
+        111,
+        104,
+        237,
+        211,
+        60,
+        227,
+        164,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "price_per_read",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Forecast",
+      "discriminator": [
+        249,
+        253,
+        125,
+        195,
+        175,
+        165,
+        123,
+        36
+      ]
+    },
+    {
+      "name": "Forecaster",
+      "discriminator": [
+        21,
+        51,
+        9,
+        187,
+        143,
+        112,
+        107,
+        40
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Purchase",
+      "discriminator": [
+        33,
+        203,
+        1,
+        252,
+        231,
+        228,
+        8,
+        67
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ForecastPosted",
+      "discriminator": [
+        97,
+        86,
+        42,
+        124,
+        237,
+        143,
+        152,
+        189
+      ]
+    },
+    {
+      "name": "ForecastScored",
+      "discriminator": [
+        175,
+        3,
+        153,
+        75,
+        236,
+        220,
+        102,
+        163
+      ]
+    },
+    {
+      "name": "MarketResolved",
+      "discriminator": [
+        89,
+        67,
+        230,
+        95,
+        143,
+        106,
+        199,
+        202
+      ]
+    },
+    {
+      "name": "PurchaseRecorded",
+      "discriminator": [
+        158,
+        183,
+        78,
+        209,
+        180,
+        30,
+        113,
+        231
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MarketAlreadyResolved",
+      "msg": "Market is already resolved"
+    },
+    {
+      "code": 6001,
+      "name": "MarketNotResolved",
+      "msg": "Market is not resolved yet"
+    },
+    {
+      "code": 6002,
+      "name": "AlreadyRevealed",
+      "msg": "Forecast has already been revealed"
+    },
+    {
+      "code": 6003,
+      "name": "CommitmentMismatch",
+      "msg": "Reveal does not match the stored commitment"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidProbability",
+      "msg": "Probability must be in basis points 0..=10000"
+    },
+    {
+      "code": 6005,
+      "name": "SymbolTooLong",
+      "msg": "Instrument symbol exceeds 64 bytes"
+    },
+    {
+      "code": 6006,
+      "name": "NameTooLong",
+      "msg": "Forecaster name exceeds 32 bytes"
+    },
+    {
+      "code": 6007,
+      "name": "Unauthorized",
+      "msg": "Signer is not authorized"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidPayment",
+      "msg": "Payment amount or transaction signature is invalid"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Seeds: `[b\"config\"]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Oracle allowed to resolve markets."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Forecast",
+      "docs": [
+        "Seeds: `[b\"forecast\", forecaster, market_hash]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecaster",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "commitment",
+            "docs": [
+              "`sha256(prob_bps as u16 LE || salt[32])`."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "price_per_read",
+            "docs": [
+              "Snapshot of the forecaster's price at posting time."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "posted_at",
+            "type": "i64"
+          },
+          {
+            "name": "reads",
+            "type": "u32"
+          },
+          {
+            "name": "revealed",
+            "type": "bool"
+          },
+          {
+            "name": "prob_bps",
+            "docs": [
+              "0 until revealed."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "brier_bps",
+            "docs": [
+              "0 until scored."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ForecastPosted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "forecaster",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ForecastScored",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "forecaster",
+            "type": "pubkey"
+          },
+          {
+            "name": "prob_bps",
+            "type": "u16"
+          },
+          {
+            "name": "brier_bps",
+            "type": "u32"
+          },
+          {
+            "name": "reputation_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Forecaster",
+      "docs": [
+        "Seeds: `[b\"forecaster\", authority]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "price_per_read",
+            "docs": [
+              "USDC base units (6 dp) per paid read."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_forecasts",
+            "type": "u32"
+          },
+          {
+            "name": "total_reads",
+            "type": "u32"
+          },
+          {
+            "name": "scored_count",
+            "type": "u32"
+          },
+          {
+            "name": "brier_sum_bps",
+            "docs": [
+              "Sum of `brier_bps` over scored forecasts."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reputation_bps",
+            "docs": [
+              "`10000 - brier_sum_bps / scored_count`; `DEFAULT_REPUTATION_BPS` until scored."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "docs": [
+        "Seeds: `[b\"market\", market_hash]` where `market_hash = sha256(instrument_symbol)`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "instrument_symbol",
+            "type": "string"
+          },
+          {
+            "name": "resolved",
+            "type": "bool"
+          },
+          {
+            "name": "outcome_yes",
+            "type": "bool"
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome_yes",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Purchase",
+      "docs": [
+        "Seeds: `[b\"purchase\", forecast, buyer]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "payment_sig",
+            "docs": [
+              "x402 settlement transaction signature bytes."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "purchased_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PurchaseRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "forecaster",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "payment_sig",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "BPS",
+      "type": "u16",
+      "value": "10000"
+    },
+    {
+      "name": "CONFIG_SEED",
+      "type": "bytes",
+      "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "DEFAULT_REPUTATION_BPS",
+      "docs": [
+        "Reputation assigned before a forecaster has any scored forecast."
+      ],
+      "type": "u16",
+      "value": "5000"
+    },
+    {
+      "name": "FORECASTER_SEED",
+      "type": "bytes",
+      "value": "[102, 111, 114, 101, 99, 97, 115, 116, 101, 114]"
+    },
+    {
+      "name": "FORECAST_SEED",
+      "type": "bytes",
+      "value": "[102, 111, 114, 101, 99, 97, 115, 116]"
+    },
+    {
+      "name": "MARKET_SEED",
+      "type": "bytes",
+      "value": "[109, 97, 114, 107, 101, 116]"
+    },
+    {
+      "name": "PURCHASE_SEED",
+      "type": "bytes",
+      "value": "[112, 117, 114, 99, 104, 97, 115, 101]"
+    }
+  ]
+}
