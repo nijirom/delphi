@@ -3,6 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getOrCreateAssociatedTokenAccount, getMint } from '@solana/spl-token';
 import { loadEnv, REPO_ROOT, connection, loadKeypair, DelphiProgram, pdas, log } from '@delphi/shared';
+import { slugs } from '@delphi/forecaster/strategy';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -13,7 +14,7 @@ async function main(): Promise<void> {
   const devnet = genesis === 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
   if (!devnet && !local) throw new Error('Setup only permits verified devnet or localhost RPC');
   if (genesis.startsWith('5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp') || genesis.startsWith('4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z')) throw new Error('Mainnet and testnet are not permitted');
-  const paths = [...new Set([env.DELPHI_ORACLE_KEYPAIR, env.BUYER_KEYPAIR, env.FORECASTER_KEYPAIR, ...['sharp', 'momentum', 'contrarian'].map(s => `keys/persona-${s}.json`)])];
+  const paths = [...new Set([env.DELPHI_ORACLE_KEYPAIR, env.BUYER_KEYPAIR, env.FORECASTER_KEYPAIR, ...slugs.map(s => `keys/persona-${s}.json`)])];
   for (const name of paths) {
     if (!name) throw new Error('Keypair paths must be configured');
     const path = resolve(REPO_ROOT, name);
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
   if (!await conn.getAccountInfo(pdas(programId).config(), 'confirmed')) await client.initialize();
   const price = BigInt(process.env.FORECASTER_PRICE_MICRO_USDC || '10000');
   if (price <= 0n || price > 1000000n) throw new Error('Invalid persona price');
-  for (const slug of ['sharp', 'momentum', 'contrarian']) {
+  for (const slug of slugs) {
     const key = loadKeypair(`keys/persona-${slug}.json`);
     const persona = new DelphiProgram(conn, key, programId);
     const existing = await persona.fetchForecaster(key.publicKey);

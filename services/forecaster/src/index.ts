@@ -10,6 +10,7 @@ import { loadEnv, REPO_ROOT, log, connection, loadKeypair, DelphiProgram, Gemini
 import type { ForecastListing, GeminiContract, GeminiEvent } from '@delphi/shared';
 import { openStore, find, persist } from './store.js';
 import { forecast, slugs } from './strategy.js';
+import { SignalCache } from './signal.js';
 
 const env = loadEnv();
 const conn = connection(env);
@@ -93,6 +94,8 @@ async function candidates(): Promise<{ event: GeminiEvent; contract: GeminiContr
 }
 async function poll(): Promise<void> {
   const next = new Map<string, ForecastListing>();
+  const signals = new SignalCache(gemini);
+  let abstained = 0;
   for (const { event, contract, mid } of await candidates()) {
     if (stopping) return;
     const symbol = contract.instrumentSymbol;
@@ -108,7 +111,10 @@ async function poll(): Promise<void> {
         let chain = await persona.client.fetchForecast(forecastPda);
         if (!row && chain) { log('error', 'Existing forecast has no local reveal; refusing overwrite', { persona: persona.slug, forecastPda: address }); continue; }
         if (!row) {
-          const prediction = forecast(persona.slug, mid, old?.mid ?? null);
+          let signal = null;
+          if (persona.slug === 'quant') { try { signal = await signals.for(event, contract); } catch { log('warn', 'Spot signal unavailable; quant abstains this poll', { instrumentSymbol: symbol }); } }
+          const prediction = forecast(persona.slug, mid, old?.mid ?? null, signal);
+          if (!prediction) { abstained++; continue; }
           row = { forecast_pda: address, persona: persona.slug, event_ticker: event.ticker, instrument_symbol: symbol, prob_bps: prediction.probBps, salt_hex: Buffer.from(randomSalt()).toString('hex'), rationale: prediction.rationale, posted_at: Math.floor(now / 1000), tx: null };
           // FULL synchronous SQLite commit precedes any transaction broadcast.
           persist(db, row);
@@ -135,7 +141,7 @@ async function poll(): Promise<void> {
   db.prepare('DELETE FROM observations WHERE ts < ?').run(Date.now() - 86400000);
   live = next;
   lastPoll = Date.now();
-  log('info', 'Forecast refresh completed', { active: live.size });
+  log('info', 'Forecast refresh completed', { active: live.size, abstained });
 }
 function tick(): void {
   if (running || stopping) return;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { brierBps, clampProb, edge, kellyFraction, pooledForecast } from './math.js';
+import { brierBps, clampProb, edge, kellyFraction, normalCdf, pooledForecast, probabilityAbove, realizedVolPerMinute } from './math.js';
 import { commitment, marketHash } from './solana.js';
 import { eventTickerFromSymbol, midPrice, type GeminiContract } from './gemini.js';
 test('Brier mirrors integer program scoring', () => {
@@ -16,6 +16,20 @@ test('pooling and guardrail arithmetic', () => {
   assert.equal(clampProb(1), 0.99); assert.throws(() => clampProb(NaN));
   assert.equal(edge(0.3, 0.5).side, 'no'); assert.equal(kellyFraction(0.9, 0.5, 0.25), 0.25);
   assert.equal(kellyFraction(0.1, 0.5, 0.25), 0);
+});
+test('diffusion probability is monotone in spot and tightens with horizon', () => {
+  assert.ok(Math.abs(normalCdf(0) - 0.5) < 1e-7);
+  assert.ok(Math.abs(normalCdf(1.959964) - 0.975) < 1e-6);
+  assert.ok(Math.abs(normalCdf(-1.959964) - 0.025) < 1e-6);
+  const sigma = realizedVolPerMinute([100, 101, 100, 101, 100]);
+  assert.ok(sigma > 0.009 && sigma < 0.012);
+  const atStrike = probabilityAbove(100, 100, 0.001, 5);
+  assert.ok(atStrike > 0.49 && atStrike <= 0.5, 'at the money is just under one half from the drift correction');
+  assert.ok(probabilityAbove(101, 100, 0.001, 5) > 0.99);
+  assert.ok(probabilityAbove(101, 100, 0.001, 5) > probabilityAbove(101, 100, 0.001, 500), 'a longer horizon diffuses the lead');
+  assert.ok(probabilityAbove(99, 100, 0.001, 5) < 0.01);
+  assert.throws(() => probabilityAbove(100, 100, 0.001, 0));
+  assert.throws(() => realizedVolPerMinute([100, 0]));
 });
 test('commitments use two-byte little endian probability', () => {
   const salt = new Uint8Array(32); const input = Buffer.alloc(34); input.writeUInt16LE(7500);

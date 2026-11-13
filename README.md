@@ -15,9 +15,10 @@ Built for the University Blockchain Conference 2026 hackathon.
 
 ## What it does
 
-1. Three forecaster personas post forecasts on near-expiry Gemini contracts
-   (5–15 minute crypto Up/Down, NBA moneylines). Only a `sha256(prob ‖ salt)`
-   commitment goes on-chain.
+1. Three forecaster personas post commitments on near-expiry Gemini contracts.
+   `quant` prices crypto strike contracts from Gemini spot and realized vol
+   (and abstains without a strike); `momentum` and `contrarian` are
+   mid-derived baselines. Only a `sha256(prob ‖ salt)` commitment goes on-chain.
 2. A buyer agent with a USDC budget discovers forecasts, pays per read with
    x402 (`exact` scheme, devnet USDC), and records each purchase on-chain.
 3. It pools the purchased forecasts with reputation-weighted log-odds and

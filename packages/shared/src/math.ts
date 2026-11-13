@@ -29,3 +29,30 @@ export function kellyFraction(p: number, price: number, cap: number): number {
   if (p < 0 || p > 1 || price <= 0 || price >= 1 || cap < 0 || cap > 1) throw new RangeError('Invalid Kelly inputs');
   return Math.min(cap, Math.max(0, (p - price) / (1 - price)));
 }
+/** Standard normal CDF via Abramowitz–Stegun 7.1.26 (|error| < 1.5e-7). */
+export function normalCdf(x: number): number {
+  finite(x);
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const tail = Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI) * poly;
+  return x >= 0 ? 1 - tail : tail;
+}
+/** Per-minute realized volatility: sample standard deviation of log returns over consecutive closes. */
+export function realizedVolPerMinute(closes: number[]): number {
+  if (closes.length < 2) throw new RangeError('Need at least two closes');
+  const returns: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    finite(closes[i]); if (closes[i] <= 0 || closes[i - 1] <= 0) throw new RangeError('Closes must be positive');
+    returns.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / Math.max(1, returns.length - 1);
+  return Math.sqrt(variance);
+}
+/** P(S_T >= strike) under driftless lognormal diffusion; sigma is per-minute, horizon in minutes. */
+export function probabilityAbove(spot: number, strike: number, sigmaPerMinute: number, minutes: number): number {
+  for (const n of [spot, strike, sigmaPerMinute, minutes]) finite(n);
+  if (spot <= 0 || strike <= 0 || sigmaPerMinute < 0 || minutes <= 0) throw new RangeError('Invalid diffusion inputs');
+  const sigma = Math.max(sigmaPerMinute, 1e-6) * Math.sqrt(minutes);
+  return normalCdf((Math.log(spot / strike) - sigma * sigma / 2) / sigma);
+}

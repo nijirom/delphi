@@ -8,7 +8,7 @@ export type GeminiContract = {
   priceHistory?: { timestamp: string | number; price: string | number }[];
   eventTicker?: string;
 };
-export type GeminiEvent = { id: string; title: string; ticker: string; category: string; type: 'binary' | 'categorical'; status: string; resolvedAt: string | null; expiryDate: string | null; contracts: GeminiContract[]; settlement?: { value?: string } };
+export type GeminiEvent = { id: string; title: string; ticker: string; category: string; type: 'binary' | 'categorical'; status: string; resolvedAt: string | null; expiryDate: string | null; contracts: GeminiContract[]; settlement?: { value?: string }; sourceDetails?: { agency?: string; index?: string } };
 export type GeminiOrder = { orderId: number; status: 'open' | 'filled' | 'cancelled'; symbol: string; side: string; outcome: string; quantity: string; filledQuantity: string; price: string; avgExecutionPrice: string | null };
 export type ActiveBinaryOptions = { category?: string[]; search?: string; limit?: number; minExpiryMs?: number; maxExpiryMs?: number; now?: number };
 type EventsPage = { data: GeminiEvent[]; pagination: { limit: number; offset: number; total: number } };
@@ -115,5 +115,27 @@ export class GeminiClient {
     const result = await this.request<unknown[] | { data: unknown[] }>(`${prefix}/positions`, 'GET', {}, true);
     const data = Array.isArray(result) ? result : result.data;
     if (!Array.isArray(data)) throw new Error('Gemini positions response is invalid'); return data;
+  }
+  /** Public spot last price for a Gemini spot symbol such as `btcusd`. */
+  async spot(symbol: string): Promise<number> {
+    if (!/^[a-z0-9]{4,12}$/.test(symbol)) throw new RangeError('Invalid spot symbol');
+    const ticker = await this.request<{ close?: unknown }>(`/v2/ticker/${symbol}`);
+    const price = Number(ticker.close);
+    if (!Number.isFinite(price) || price <= 0) throw new Error('Gemini spot ticker is invalid');
+    return price;
+  }
+  /** One-minute candle closes, oldest first. Gemini returns newest first as [time, open, high, low, close, volume]. */
+  async minuteCloses(symbol: string): Promise<number[]> {
+    if (!/^[a-z0-9]{4,12}$/.test(symbol)) throw new RangeError('Invalid spot symbol');
+    const rows = await this.request<unknown[]>(`/v2/candles/${symbol}/1m`);
+    if (!Array.isArray(rows)) throw new Error('Gemini candles response is invalid');
+    const closes: number[] = [];
+    for (const row of rows) {
+      if (!Array.isArray(row) || row.length < 5) throw new Error('Gemini candle row is invalid');
+      const close = Number(row[4]);
+      if (!Number.isFinite(close) || close <= 0) throw new Error('Gemini candle close is invalid');
+      closes.push(close);
+    }
+    return closes.reverse();
   }
 }

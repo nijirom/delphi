@@ -46,6 +46,20 @@ flowchart LR
 | `services/indexer` | QuickNode Streams webhook (or RPC poller) → SQLite → REST/SSE. |
 | `apps/web` | Leaderboard, live feed, per-market view. |
 
+## Forecaster personas
+
+| Persona | Signal | Posts on |
+| --- | --- | --- |
+| `quant` | Driftless lognormal `P(spot ≥ strike)` from Gemini spot (`/v2/ticker`) and realized 1-minute vol (`/v2/candles`, last 240). Ignores the contract's market price. | Crypto contracts with a published strike (`above` ladders, and `reference` Up/Down once the reference price is set five minutes before expiry). Abstains elsewhere. |
+| `momentum` | Market mid plus half the mid's change over the last 1–15 minutes, capped at ±5 points. | Every candidate. |
+| `contrarian` | Market mid shrunk 20 % toward one half. | Every candidate. |
+
+`quant` is the only persona carrying information the contract price does not
+already encode; the other two are mid-derived baselines kept so scoring has
+something to rank it against. Basis between the Lukka settlement index and
+Gemini spot is accepted model error. Nothing is backtested; the rationale
+sold with each read says so.
+
 ## Why commit–reveal
 
 A forecast sold off-chain cannot be public on-chain or nobody would pay for it.
