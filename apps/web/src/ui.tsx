@@ -14,9 +14,20 @@ export function Bar({ value, tone = 'yes' }: { value: number | null; tone?: 'yes
 export function OutcomeRow({ label, price, meta, tone }: { label: string; price: number | null; meta?: string; tone: 'yes' | 'no' }) {
   return <div className={`outcome ${tone}`}><span className="label">{label}</span>{meta && <span className="meta">{meta}</span>}<span className="price">{cents(price)}</span><Bar value={price} tone={tone} /></div>;
 }
+export function isLiveMarket(m: MarketSummary): boolean {
+  return !m.resolved && m.geminiStatus === 'active' && Date.parse(m.expiryDate ?? '') > Date.now();
+}
+export function QuoteAge({ m }: { m: MarketSummary }) {
+  const ts = m.quoteUpdatedAt;
+  if (!finite(ts)) return <span className="quote-age">Quote not yet observed</span>;
+  const stale = Date.now() - ts > 120000;
+  return <span className={`quote-age${stale ? ' stale' : ''}`} title={`Gemini quote fetched ${new Date(ts).toISOString()}`}>{isLiveMarket(m) ? 'Quote' : 'Last quote'} · {ago(ts)}{stale ? ' · stale' : ''}</span>;
+}
 export function Status({ m }: { m: MarketSummary }) {
-  if (m.resolved) return <span className={`badge ${m.outcomeYes ? 'yes' : 'no'}`}>Resolved {m.outcomeYes ? 'YES' : 'NO'}</span>;
-  if (m.geminiStatus && m.geminiStatus !== 'active') return <span className="badge">{m.geminiStatus}</span>;
+  if (m.resolved) return <span className={`badge ${m.outcomeYes === true ? 'yes' : m.outcomeYes === false ? 'no' : ''}`}>Resolved{m.outcomeYes === null ? '' : m.outcomeYes ? ' YES' : ' NO'}</span>;
+  if (m.geminiStatus && m.geminiStatus !== 'active') return <span className="badge">Gemini {m.geminiStatus} · not resolved on-chain</span>;
+  if (Date.parse(m.expiryDate ?? '') <= Date.now()) return <span className="badge">Expired · awaiting resolution</span>;
+  if (!isLiveMarket(m)) return <span className="badge">{m.geminiStatus === 'active' ? 'Expiry unknown' : 'Status unknown'}</span>;
   return <span className="badge live">{until(m.expiryDate)}</span>;
 }
 export function MarketCard({ m }: { m: MarketSummary }) {
@@ -25,11 +36,12 @@ export function MarketCard({ m }: { m: MarketSummary }) {
     <div className="card-head"><Icon category={m.category} /><div><h3>{m.title ?? m.instrumentSymbol}</h3><span className="sym">{m.instrumentSymbol}</span></div></div>
     <OutcomeRow label="Yes" price={yes} meta={`${m.reads} reads`} tone="yes" />
     <OutcomeRow label="No" price={no} meta={`${m.forecasts} forecasts`} tone="no" />
+    <QuoteAge m={m} />
     <div className="card-foot"><Status m={m} /><span className="muted">{m.revealed}/{m.forecasts} scored</span></div>
   </a>;
 }
 export function MarketListRow({ m }: { m: MarketSummary }) {
-  return <a className="list-row" href={marketHref(m.instrumentSymbol)}><Icon category={m.category} /><span className="title">{m.title ?? m.instrumentSymbol}<small>{m.instrumentSymbol}</small></span><span className="price yes">{cents(m.quote.mid)}</span><span>{m.forecasts} fc</span><span>{m.reads} reads</span><Status m={m} /></a>;
+  return <a className="list-row" href={marketHref(m.instrumentSymbol)}><Icon category={m.category} /><span className="title">{m.title ?? m.instrumentSymbol}<small>{m.instrumentSymbol}</small></span><span className="list-price"><span className="price yes">{cents(m.quote.mid)}</span><QuoteAge m={m} /></span><span>{m.forecasts} fc</span><span>{m.reads} reads</span><Status m={m} /></a>;
 }
 export function Purchase({ e, dense = false }: { e: IndexerEvent; dense?: boolean }) {
   const buyer = text(e.data.buyer) ? short(e.data.buyer) : 'buyer', amount = text(e.data.amount) || finite(e.data.amount) ? Number(e.data.amount) / 1e6 : null;

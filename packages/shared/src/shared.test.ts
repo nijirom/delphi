@@ -30,5 +30,7 @@ test('market quote parsing rejects empty and nonfinite quotes', () => {
   assert.equal(midPrice(quote(null, null, '0.3')), 0.3);
   assert.equal(midPrice(quote('0.8', '0.2', null)), null);
   assert.equal(eventTickerFromSymbol('GEMI-BTC05M2611122100-UP'), 'BTC05M2611122100');
-  assert.equal(eventTickerFromSymbol('GEMI-NBA-TEAM-A'), 'NBA-TEAM-A');
+  assert.equal(eventTickerFromSymbol('GEMI-HYPE2611132200-HI68'), 'HYPE2611132200');
+  assert.equal(eventTickerFromSymbol('GEMI-NBA-2611160000-HOU-WAS-M-HOU'), 'NBA-2611160000-HOU-WAS-M');
+  assert.equal(eventTickerFromSymbol('GEMI-SOLO'), 'SOLO');
 });

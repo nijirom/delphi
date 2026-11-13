@@ -22,8 +22,11 @@ export function midPrice(c: GeminiContract): number | null {
   if (bid !== null && ask !== null && bid <= ask) return (bid + ask) / 2;
   return probability(c.prices?.lastTradePrice);
 }
+/** Event ticker = instrument symbol without the `GEMI-` prefix and the trailing contract segment (`-UP`, `-HI68`, `-HOU`). */
 export function eventTickerFromSymbol(instrumentSymbol: string): string {
-  return /^GEMI-(.+)-(UP|DOWN)$/.exec(instrumentSymbol)?.[1] ?? instrumentSymbol.replace(/^GEMI-/, '');
+  const body = instrumentSymbol.replace(/^GEMI-/, '');
+  const cut = body.lastIndexOf('-');
+  return cut > 0 ? body.slice(0, cut) : body;
 }
 export class GeminiClient {
   constructor(private readonly opts: { publicBase: string; privateBase: string; apiKey?: string; apiSecret?: string }) {

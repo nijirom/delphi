@@ -108,9 +108,11 @@ upstream fetch time), with seven days of samples retained in SQLite. These are
 locally collected observations, not Gemini historical candles or an order book.
 Missing data stays empty; no chart history or purchases are fabricated.
 
-The browser refreshes snapshots every 15 seconds and on SSE activity. Backend
-failures retain the last successful snapshot with an alert. The layout adapts
-to narrow screens; wide forecast and leaderboard tables scroll inside panels.
+The browser refreshes snapshots every 15 seconds and on SSE activity. Every
+quote carries its observation age; observations older than two minutes are
+marked stale, and a stale chain snapshot or unreachable indexer is reported in
+the status bar with the last successful data retained. The layout adapts to
+narrow screens; wide forecast and leaderboard tables scroll inside panels.
 
 ## Repository layout
 

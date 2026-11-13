@@ -6,7 +6,10 @@ export const KINDS = ['forecast_posted', 'purchase_recorded', 'market_resolved',
 export const object = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 export const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 export const text = (x: unknown): x is string => typeof x === 'string';
-const nullable = (x: unknown) => x === null || finite(x);
+const probability = (x: unknown): x is number => finite(x) && x >= 0 && x <= 1;
+const nullablePrice = (x: unknown): x is number | null => x === null || probability(x);
+const count = (x: unknown): x is number => finite(x) && Number.isSafeInteger(x) && x >= 0;
+const nullableTime = (x: unknown): x is number | null => x === null || count(x);
 
 export function isEvent(x: unknown): x is IndexerEvent {
   return object(x) && finite(x.id) && finite(x.slot) && finite(x.ts) && text(x.signature) && text(x.kind) && (KINDS as readonly string[]).includes(x.kind) && object(x.data);
@@ -18,18 +21,40 @@ export function isRow(x: unknown): x is LeaderboardRow {
   return object(x) && ['forecasterPda', 'authority', 'name'].every(k => text(x[k])) && ['reputationBps', 'scoredCount', 'totalReads', 'earnedUsdc'].every(k => finite(x[k]));
 }
 export function isMarket(x: unknown): x is MarketSummary {
-  return object(x) && text(x.instrumentSymbol) && text(x.marketPda) && typeof x.resolved === 'boolean' && object(x.quote) && ['bestBid', 'bestAsk', 'lastTradePrice', 'mid'].every(k => nullable((x.quote as Record<string, unknown>)[k])) && finite(x.forecasts) && finite(x.revealed) && finite(x.reads);
+  if (!object(x) || !text(x.instrumentSymbol) || !text(x.marketPda) || typeof x.resolved !== 'boolean' || !object(x.quote)) return false;
+  const quote = x.quote;
+  return ['bestBid', 'bestAsk', 'lastTradePrice', 'mid'].every(k => nullablePrice(quote[k]))
+    && ['eventTicker', 'title', 'category', 'expiryDate', 'geminiStatus'].every(k => x[k] === null || text(x[k]))
+    && (x.outcomeYes === null || typeof x.outcomeYes === 'boolean') && nullableTime(x.resolvedAt) && nullableTime(x.quoteUpdatedAt)
+    && count(x.forecasts) && count(x.revealed) && count(x.reads) && (x.latestDecision === null || isTelemetry(x.latestDecision));
 }
 export function isDetail(x: unknown): x is MarketDetail {
-  return isMarket(x) && Array.isArray((x as MarketDetail).prices) && Array.isArray((x as MarketDetail).forecastList);
+  if (!isMarket(x)) return false;
+  const detail = x as Record<string, unknown>;
+  return Array.isArray(detail.prices) && detail.prices.every(p => object(p) && count(p.ts) && nullablePrice(p.bid) && nullablePrice(p.ask) && nullablePrice(p.mid))
+    && Array.isArray(detail.forecastList) && detail.forecastList.every((f: unknown) => object(f)
+      && ['forecastPda', 'forecasterPda', 'forecasterName'].every(k => text(f[k]))
+      && count(f.reputationBps) && f.reputationBps <= 10000 && finite(f.pricePerReadUsdc) && f.pricePerReadUsdc >= 0
+      && count(f.reads) && count(f.postedAt) && typeof f.revealed === 'boolean'
+      && (f.revealed ? count(f.probBps) && f.probBps <= 10000 && count(f.brierBps) && f.brierBps <= 10000 : f.probBps === null && f.brierBps === null));
+}
+
+export function isHealth(x: unknown): x is { ok: boolean; snapshotAt: number | null } {
+  return object(x) && typeof x.ok === 'boolean' && nullableTime(x.snapshotAt);
 }
 
 export async function get<T>(path: string, guard: (x: unknown) => x is T, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/${path}`, { signal, headers: { Accept: 'application/json' }, cache: 'no-store' });
-  if (!response.ok) throw new Error(`Indexer request failed (HTTP ${response.status}).`);
-  const value: unknown = await response.json();
-  if (!guard(value)) throw new Error('Indexer returned an incompatible response.');
-  return value;
+  const timeout = AbortSignal.timeout(12000);
+  try {
+    const response = await fetch(`/api/${path}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout, headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) throw new Error(`Indexer request failed (HTTP ${response.status}).`);
+    const value: unknown = await response.json();
+    if (!guard(value)) throw new Error('Indexer returned an incompatible response.');
+    return value;
+  } catch (error) {
+    if (timeout.aborted && !signal?.aborted) throw new Error('Indexer request timed out.');
+    throw error;
+  }
 }
 export const list = <T,>(guard: (x: unknown) => x is T) => (x: unknown): x is T[] => Array.isArray(x) && x.every(guard);
 

@@ -9,7 +9,7 @@ export type MarketForecast = { forecastPda: string; forecasterPda: string; forec
 export type MarketSummary = {
   instrumentSymbol: string; marketPda: string; eventTicker: string | null; title: string | null; category: string | null;
   expiryDate: string | null; geminiStatus: string | null; resolved: boolean; outcomeYes: boolean | null; resolvedAt: number | null;
-  quote: MarketQuote; forecasts: number; revealed: number; reads: number; latestDecision: AgentTelemetry | null;
+  quote: MarketQuote; quoteUpdatedAt: number | null; forecasts: number; revealed: number; reads: number; latestDecision: AgentTelemetry | null;
 };
 export type PricePoint = { ts: number; bid: number | null; ask: number | null; mid: number | null };
 export type MarketDetail = MarketSummary & { prices: PricePoint[]; forecastList: MarketForecast[] };
