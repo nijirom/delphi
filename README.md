@@ -27,8 +27,8 @@ Built for the University Blockchain Conference 2026 hackathon.
 4. The resolver mirrors Gemini settlements on-chain. Forecasts are revealed and
    scored; forecaster reputation updates. Buyers can reveal what they bought.
 5. QuickNode Streams pushes program activity to the indexer; the dashboard
-   shows the leaderboard, live agent telemetry, and per-market pooled vs.
-   market price.
+   shows searchable market cards, sampled Gemini quotes, forecaster reputation,
+   and the buyer agent's latest decision.
 
 Architecture, decision loop, and trust assumptions: [docs/architecture.md](docs/architecture.md).
 Guardrails and kill switch: [docs/guardrails.md](docs/guardrails.md).
@@ -86,6 +86,31 @@ large trades from the terminal instead of by phone.
 `INDEXER_SOURCE=rpc` polls the devnet RPC when you do not have a QuickNode
 Streams webhook reachable; `streams` is the default and is documented in
 [docs/streams.md](docs/streams.md).
+
+## Dashboard
+
+The web app uses a compact market-browser and terminal layout with Delphi's
+dark teal/mint palette. Search and category filters, grid/list views, and sorting
+operate on markets already initialized in the Delphi program—not the entire
+Gemini catalog. Forecasters and Activity are separate views.
+
+Open a market for sampled Yes-mid history, chart windows, committed/revealed
+forecasts, bid/ask quotes, purchase/scoring activity, and a **read-only** agent
+decision panel. It does not submit orders. Pooled probability and sizing are
+carried forward only within the same buyer scan; later skip/error/trade stages
+take precedence over an earlier decision.
+
+The indexer exposes `GET /markets`, `GET /markets/:symbol`, and
+`GET /categories`, alongside its existing leaderboard, events, telemetry, and
+SSE endpoints. Vite proxies these through `/api`. Quotes are sampled during
+indexer refreshes (10 seconds in RPC mode, 30 seconds in Streams mode, plus
+upstream fetch time), with seven days of samples retained in SQLite. These are
+locally collected observations, not Gemini historical candles or an order book.
+Missing data stays empty; no chart history or purchases are fabricated.
+
+The browser refreshes snapshots every 15 seconds and on SSE activity. Backend
+failures retain the last successful snapshot with an alert. The layout adapts
+to narrow screens; wide forecast and leaderboard tables scroll inside panels.
 
 ## Repository layout
 

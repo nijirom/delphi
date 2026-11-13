@@ -2,10 +2,11 @@ import express from 'express';
 import type { Response } from 'express';
 import { resolve } from 'node:path';
 import { PublicKey } from '@solana/web3.js';
-import { loadEnv, REPO_ROOT, log } from '@delphi/shared';
+import { loadEnv, REPO_ROOT, log, GeminiClient } from '@delphi/shared';
 import { authorized, normalizePayload, telemetry } from './input.js';
 import { Store } from './store.js';
 import { ChainIndexer } from './chain.js';
+import { Markets } from './markets.js';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
     for (const res of clients) if (!res.write(message)) { clients.delete(res); res.end(); }
   }
   const chain = new ChainIndexer(store, new PublicKey(env.DELPHI_PROGRAM_ID), env.SOLANA_RPC_URL, resolve(REPO_ROOT, 'packages/shared/idl/delphi.json'), env.USDC_MINT, event => broadcast('event', event));
+  const markets = new Markets(store, chain, new GeminiClient({ publicBase: env.GEMINI_PUBLIC_API_BASE, privateBase: env.GEMINI_API_BASE }));
   let lastErrorAt: number | null = null;
   let stopping = false;
   let busy = false;
@@ -28,6 +30,7 @@ async function main(): Promise<void> {
     busy = true;
     try {
       await chain.refresh();
+      try { await markets.refresh(); } catch { log('warn', 'Gemini market metadata refresh failed'); }
       if (source === 'rpc') await chain.poll();
       lastErrorAt = null;
     } catch { lastErrorAt = Date.now(); log('error', 'Indexer chain refresh or polling failed'); }
@@ -71,6 +74,15 @@ async function main(): Promise<void> {
     } catch { res.status(400).json({ error: 'Invalid query; since is an exclusive event ID' }); }
   });
   app.get('/leaderboard', (_req, res) => res.json(store.leaderboard()));
+  app.get('/markets', (_req, res) => res.json(markets.list()));
+  app.get('/markets/:symbol', (req, res) => {
+    const symbol = String(req.params.symbol);
+    if (!/^[\w.\-]{1,64}$/.test(symbol)) { res.status(400).json({ error: 'Invalid symbol' }); return; }
+    const detail = markets.detail(symbol);
+    if (!detail) { res.status(404).json({ error: 'Unknown market' }); return; }
+    res.json(detail);
+  });
+  app.get('/categories', (_req, res) => res.json(markets.categories()));
   app.get('/telemetry', (req, res) => {
     try { res.json(store.telemetry(integer(req.query.limit, 100, 1000))); }
     catch { res.status(400).json({ error: 'Invalid query' }); }
@@ -95,7 +107,7 @@ async function main(): Promise<void> {
   const server = app.listen(port, process.env.INDEXER_HOST ?? '127.0.0.1', () => log('info', 'Indexer listening', { port, source }));
   server.requestTimeout = 30000; server.headersTimeout = 15000;
   server.on('error', () => { log('error', 'Indexer HTTP server failed'); process.exitCode = 1; void shutdown(); });
-  const timer = setInterval(() => { void cycle(); }, source === 'rpc' ? 10000 : 60000);
+  const timer = setInterval(() => { void cycle(); }, source === 'rpc' ? 10000 : 30000);
   async function shutdown(): Promise<void> {
     if (stopping) return;
     stopping = true; clearInterval(timer);

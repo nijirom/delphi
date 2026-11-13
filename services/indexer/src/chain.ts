@@ -7,6 +7,8 @@ import { eventKind, normalizePayload, tokenReceipts, type Row } from './input.js
 import { Store, type NewEvent, type StoredEvent } from './store.js';
 const { Program, AnchorProvider, BorshCoder, EventParser } = anchor;
 type AccountRow = { publicKey: PublicKey; account: Record<string, unknown> };
+export type ForecastSnapshot = { pubkey: string; forecaster: string; market: string; pricePerRead: number; postedAt: number; reads: number; revealed: boolean; probBps: number; brierBps: number };
+export type MarketSnapshot = { resolved: boolean; outcomeYes: boolean; resolvedAt: number };
 type AccountClient = { all(): Promise<AccountRow[]> };
 function text(x: unknown): string { return x instanceof PublicKey ? x.toBase58() : String(x); }
 function json(x: unknown): unknown {
@@ -25,6 +27,8 @@ export class ChainIndexer {
   owners = new Set<string>();
   symbols = new Map<string, string>();
   forecastMarkets = new Map<string, string>();
+  forecasts: ForecastSnapshot[] = [];
+  markets = new Map<string, MarketSnapshot>();
   ready = false;
   constructor(readonly store: Store, readonly programId: PublicKey, rpcUrl: string, idlPath: string, readonly mint: string, readonly publish: (event: StoredEvent) => void) {
     this.rpc = new Connection(rpcUrl, 'finalized');
@@ -48,7 +52,9 @@ export class ChainIndexer {
     this.store.snapshot(snapshot);
     this.owners = new Set(snapshot.map(r => r.authority));
     this.symbols = new Map(markets.map(({ publicKey, account }) => [publicKey.toBase58(), text(account.instrumentSymbol)]));
-    this.forecastMarkets = new Map(forecasts.map(({ publicKey, account }) => [publicKey.toBase58(), text(account.market)]));
+    this.markets = new Map(markets.map(({ publicKey, account }) => [publicKey.toBase58(), { resolved: Boolean(account.resolved), outcomeYes: Boolean(account.outcomeYes), resolvedAt: Number(account.resolvedAt) }]));
+    this.forecasts = forecasts.map(({ publicKey, account: a }) => ({ pubkey: publicKey.toBase58(), forecaster: text(a.forecaster), market: text(a.market), pricePerRead: Number(a.pricePerRead), postedAt: Number(a.postedAt), reads: Number(a.reads), revealed: Boolean(a.revealed), probBps: Number(a.probBps), brierBps: Number(a.brierBps) }));
+    this.forecastMarkets = new Map(this.forecasts.map(f => [f.pubkey, f.market]));
     this.ready = true;
   }
   ingest(row: Row): void {
