@@ -1,4 +1,4 @@
-# Render Blueprint for the public indexer that backs the Vercel dashboard (/api/* rewrite).
+# Render Blueprint: the public indexer behind the Vercel dashboard's /api/* rewrite, and the devnet agent stack.
 services:
   - type: web
     name: delphi-indexer
@@ -27,3 +27,28 @@ services:
         generateValue: true
       - key: SOLANA_RPC_URL
         sync: false
+
+  # Forecaster (public), x402 facilitator, resolver, two settlement signers and the buyer; see scripts/run-render.sh.
+  # Keys and .env come from the secret file delphi-bundle.b64. Never run this while run-devnet.sh runs elsewhere:
+  # both would post and reveal with the same persona keys.
+  - type: web
+    name: delphi-stack
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci --include=dev
+    startCommand: bash scripts/run-render.sh
+    disk:
+      name: stack-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: TELEMETRY_INDEXER_URL
+        value: https://delphi-indexer-063i.onrender.com
+      - key: TELEMETRY_INDEXER_SECRET
+        fromService:
+          type: web
+          name: delphi-indexer
+          envVarKey: STREAMS_WEBHOOK_SECRET
+      - key: BUYER_DRY_RUN
+        value: "true"
