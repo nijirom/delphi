@@ -12,6 +12,7 @@ import type { ForecastListing, GeminiContract, GeminiEvent } from '@delphi/share
 import { openStore, find, persist, type Reveal } from './store.js';
 import { forecast, slugs } from './strategy.js';
 import { SignalCache } from './signal.js';
+import { selectMarkets, type Candidate } from './selection.js';
 import { registerPublishingRoutes } from './publishing.js';
 import { createPublishingStore } from './publishing-store.js';
 import { registerChannelRoutes } from './channels.js';
@@ -127,23 +128,15 @@ app.use((_err: unknown, _req: express.Request, res: express.Response, _next: exp
   if (!res.headersSent) res.status(503).json({ error: 'Service unavailable' });
 });
 
-async function candidates(): Promise<{ event: GeminiEvent; contract: GeminiContract; mid: number }[]> {
-  const selected: { event: GeminiEvent; contract: GeminiContract; mid: number }[] = [];
+async function candidates(): Promise<Candidate[]> {
+  const events: GeminiEvent[] = [];
   for (let offset = 0; ; offset += 100) {
     const page = await gemini.listEvents({ status: ['active'], limit: 100, offset });
-    for (const event of page.data) {
-      if (event.type !== 'binary' || event.status.toLowerCase() !== 'active') continue;
-      for (const contract of event.contracts) {
-        const expiry = Date.parse(contract.expiryDate || event.expiryDate || '');
-        const mid = midPrice(contract);
-        if (contract.status.toLowerCase() !== 'active' || contract.resolutionSide !== null || !Number.isFinite(expiry) || expiry < Date.now() + 120000 || expiry > Date.now() + 86400000 || mid === null || mid <= 0 || mid >= 1) continue;
-        selected.push({ event, contract, mid });
-      }
-    }
+    events.push(...page.data);
     if (!page.data.length || offset + page.data.length >= page.pagination.total) break;
     if (offset >= 9900) throw new Error('Market pagination exceeded safety limit');
   }
-  return selected.sort((a, b) => Date.parse(a.contract.expiryDate || a.event.expiryDate!) - Date.parse(b.contract.expiryDate || b.event.expiryDate!)).slice(0, count);
+  return selectMarkets(events, Date.now(), count);
 }
 async function poll(): Promise<void> {
   const next = new Map<string, ForecastListing>();

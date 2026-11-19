@@ -6,7 +6,7 @@ import { GeminiClient, commitment, marketHash, pdas, type AgentTelemetry, type D
 import { Ledger } from './guardrails.js';
 import { Buyer } from './loop.js';
 
-function scenario(t:TestContext, refresh:(event:GeminiEvent)=>GeminiEvent|null = event=>event) {
+function scenario(t:TestContext, refresh:(event:GeminiEvent)=>GeminiEvent|null = event=>event, catalog:(event:GeminiEvent)=>GeminiEvent = event=>event) {
   let now=Date.parse('2026-11-13T12:00:00Z');
   t.mock.method(Date,'now',()=>now);
   const expiry=now+3600000, symbol='GEMI-CONTRACT-UP', ticker='PARENT-EVENT';
@@ -39,7 +39,7 @@ function scenario(t:TestContext, refresh:(event:GeminiEvent)=>GeminiEvent|null =
     if (url.origin==='http://localhost:4020' && url.pathname==='/forecasts') return Response.json([listing]);
     if (url.origin==='http://localhost:4999' && url.pathname==='/v1/prediction-markets/events') {
       const offset=Number(url.searchParams.get('offset'));
-      const data=offset===0?Array.from({length:100},(_,i)=>({...event,ticker:`OTHER-${i}`,contracts:[]})):offset===100?[event]:[];
+      const data=offset===0?Array.from({length:100},(_,i)=>({...event,ticker:`OTHER-${i}`,contracts:[]})):offset===100?[catalog(event)]:[];
       return Response.json({data,pagination:{limit:100,offset,total:101}});
     }
     if (url.origin==='http://localhost:4999' && url.pathname===`/v1/prediction-markets/events/${ticker}`) {
@@ -73,11 +73,19 @@ test('paid candidate beyond page one trades at exact-event quotes with inherited
   assert.equal(s.telemetry.at(-1)?.stage,'trade');
 });
 
+test('an outcome contract of a categorical event trades like a binary one',async t=>{
+  const categorical=(e:GeminiEvent):GeminiEvent=>({...e,type:'categorical'});
+  const s=scenario(t,categorical,categorical);
+  await s.buyer.tick();
+  assert.equal(s.orders.length,1);
+  assert.equal(s.orders[0].symbol,s.symbol);
+  assert.equal(s.telemetry.at(-1)?.stage,'trade');
+});
+
 const rejected:{name:string;refresh:(event:GeminiEvent)=>GeminiEvent|null;reason:string}[]=[
   {name:'unknown event',refresh:()=>null,reason:'market_refresh_unavailable'},
-  {name:'wrong parent',refresh:e=>({...e,ticker:'OTHER'}),reason:'market_not_active_binary'},
-  {name:'inactive event',refresh:e=>({...e,status:'closed'}),reason:'market_not_active_binary'},
-  {name:'categorical event',refresh:e=>({...e,type:'categorical'}),reason:'market_not_active_binary'},
+  {name:'wrong parent',refresh:e=>({...e,ticker:'OTHER'}),reason:'market_not_active'},
+  {name:'inactive event',refresh:e=>({...e,status:'closed'}),reason:'market_not_active'},
   {name:'unmatched contract',refresh:e=>({...e,contracts:e.contracts.map(c=>({...c,instrumentSymbol:'GEMI-OTHER-UP'}))}),reason:'contract_unavailable'},
   {name:'inactive contract',refresh:e=>({...e,contracts:e.contracts.map(c=>({...c,status:'closed'}))}),reason:'contract_unavailable'},
   {name:'resolved contract',refresh:e=>({...e,contracts:e.contracts.map(c=>({...c,resolutionSide:'yes'}))}),reason:'contract_unavailable'},

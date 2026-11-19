@@ -118,7 +118,8 @@ export class Buyer {
     let event:GeminiEvent;
     try { event=await gemini.getEvent(c.eventTicker); }
     catch { await this.emit('skip',{reason:'market_refresh_unavailable'},symbol); return; }
-    if (event.ticker!==c.eventTicker || event.type!=='binary' || event.status!=='active' || event.resolvedAt) { await this.emit('skip',{reason:'market_not_active_binary'},symbol); return; }
+    // Each outcome of a categorical event is its own yes/no contract, so binary and categorical parents both qualify.
+    if (event.ticker!==c.eventTicker || event.status!=='active' || event.resolvedAt) { await this.emit('skip',{reason:'market_not_active'},symbol); return; }
     const fresh=event.contracts.find(x=>x.instrumentSymbol===symbol);
     if (!fresh || fresh.status!=='active' || fresh.resolutionSide || fresh.resolvedAt) { await this.emit('skip',{reason:'contract_unavailable'},symbol); return; }
     const expiry=Date.parse(fresh.expiryDate ?? event.expiryDate ?? '');
@@ -157,10 +158,12 @@ export class Buyer {
     let listings:ForecastListing[];
     try { listings=await this.listings(); }
     catch (e) { await this.emit('error',{operation:'discovery',status:'scan_paused',reason:e instanceof Error?e.message:'forecaster_unavailable'}); return; }
+    // Only contracts something is listed for: categorical events add thousands of contracts nobody forecasts.
+    const listed=new Set(listings.map(l=>l.instrumentSymbol));
     const seen=new Set<string>();
     const contracts:GeminiContract[]=[];
-    // Bounded pagination prevents an upstream pagination bug from creating an unbounded tick.
-    for (let offset=0;offset<1000;offset+=100) {
+    // Bounded pagination (same 10,000-event cap as the forecaster) prevents an upstream pagination bug from creating an unbounded tick.
+    for (let offset=0;offset<10000;offset+=100) {
       const page=await this.o.gemini.listEvents({status:['active'],limit:100,offset}).catch(async(e:unknown)=>{
         const http=e instanceof Error?/returned HTTP (\d{3})$/.exec(e.message):null;
         await this.emit('error',{operation:'market_catalog',status:'scan_paused',reason:http?`gemini_http_${http[1]}`:'gemini_market_data_unavailable'});
@@ -168,10 +171,10 @@ export class Buyer {
       });
       if (!page) return;
       for (const event of page.data) {
-        if (event.type!=='binary' || event.status!=='active' || event.resolvedAt) continue;
+        if (event.status!=='active' || event.resolvedAt) continue;
         for (const c of event.contracts) {
           const ttl=Date.parse(c.expiryDate ?? event.expiryDate ?? '')-Date.now();
-          if (seen.has(c.instrumentSymbol) || c.status!=='active' || c.resolutionSide || c.resolvedAt || !Number.isFinite(ttl) || ttl<120000 || ttl>86400000 || (c.prices.bestAsk===null && c.prices.bestBid===null)) continue;
+          if (seen.has(c.instrumentSymbol) || !listed.has(c.instrumentSymbol) || c.status!=='active' || c.resolutionSide || c.resolvedAt || !Number.isFinite(ttl) || ttl<120000 || ttl>86400000 || (c.prices.bestAsk===null && c.prices.bestBid===null)) continue;
           seen.add(c.instrumentSymbol);
           contracts.push(c);
         }

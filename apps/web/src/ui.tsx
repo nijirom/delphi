@@ -14,7 +14,7 @@ export function Empty({ title, children }: { title: string; children?: React.Rea
   return <div className="empty"><span aria-hidden="true">◇</span><h3>{title}</h3>{children && <p>{children}</p>}</div>;
 }
 export function Icon({ category }: { category: string | null }) {
-  const glyph = { Crypto: '◈', Sports: '◉', Politics: '◆', Economics: '◇', Finance: '◇', Tech: '◫' }[category ?? ''] ?? '◌';
+  const glyph = { Crypto: '◈', Sports: '◉', Weather: '◐', Commodities: '◇', Politics: '◆', Economics: '◇', Finance: '◇', Tech: '◫' }[category ?? ''] ?? '◌';
   return <span className="icon" aria-hidden="true">{glyph}</span>;
 }
 export function Bar({ value, tone = 'yes' }: { value: number | null; tone?: 'yes' | 'no' | 'pool' }) {
