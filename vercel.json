@@ -3,5 +3,8 @@
   "framework": null,
   "installCommand": "npm ci --ignore-scripts",
   "buildCommand": "npm run build",
-  "outputDirectory": "apps/web/dist"
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://delphi-indexer-063i.onrender.com/:path*" }
+  ]
 }
