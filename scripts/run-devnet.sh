@@ -4,6 +4,7 @@
 #   PUBLIC_HOST=tailscale (or the exact <machine>.<tailnet>.ts.net) serves through Tailscale Funnel (stable): dashboard :443, forecaster :8443, resolver :10000.
 #   DEVNET_PUBLIC=1  instead opens throwaway Cloudflare quick tunnels (URLs change every run).
 #   BUYER_DRY_RUN=false  lets the buyer pay for reads (it never trades without Gemini credentials).
+#   TELEMETRY_INDEXER_URL + TELEMETRY_INDEXER_SECRET (in .env)  send buyer telemetry to a hosted indexer (e.g. Render) instead of the local one.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p data/logs
@@ -13,7 +14,13 @@ for f in "$cfg/facilitator.json" "$cfg/channel-authorizer.json" "$cfg/signers/si
 done
 # Shell overrides from earlier localnet sessions must not leak into a devnet run.
 # Optional second endpoint for read-heavy services, so they don't share a free-tier rate limit with payments.
-read_rpc=$(grep -E '^SOLANA_READ_RPC_URL=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)
+dotenv() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+read_rpc=$(dotenv SOLANA_READ_RPC_URL)
+# Optional hosted indexer for buyer telemetry; its secret is that indexer's STREAMS_WEBHOOK_SECRET.
+telemetry_url=$(dotenv TELEMETRY_INDEXER_URL) telemetry_secret=$(dotenv TELEMETRY_INDEXER_SECRET)
+if [ -n "$telemetry_url" ] && [ -z "$telemetry_secret" ]; then echo "run-devnet: TELEMETRY_INDEXER_URL needs TELEMETRY_INDEXER_SECRET" >&2; exit 1; fi
+buyer_telemetry=()
+[ -z "$telemetry_url" ] || buyer_telemetry=(INDEXER_URL="$telemetry_url" STREAMS_WEBHOOK_SECRET="$telemetry_secret")
 unset SOLANA_RPC_URL USDC_MINT FORECASTER_URL DELPHI_PROGRAM_ID INDEXER_URL
 reader() { if [ -n "$read_rpc" ]; then env SOLANA_RPC_URL="$read_rpc" "$@"; else "$@"; fi; }
 # Cadences keep eight processes under a free-tier RPC limit (QuickNode free: 15 req/s); raise them on paid plans.
@@ -76,7 +83,7 @@ for i in 1 2; do start "signer-$i" reader npm run -s attest -- --keypair "$cfg/s
 # The buyer only pays URLs on FORECASTER_URL's origin, so it must use the same (public) URL the listings carry.
 # exact by default: upto bundles escrow USDC until claimed, and a rate-limited RPC can strand those claims.
 # Use BUYER_PAYMENT_SCHEME=upto only with RPC headroom (e.g. a paid QuickNode plan).
-start buyer env FORECASTER_URL="$forecaster_url" BUYER_DB=./data/buyer-devnet.sqlite BUYER_DRY_RUN=${BUYER_DRY_RUN:-true} BUYER_PAYMENT_SCHEME=${BUYER_PAYMENT_SCHEME:-exact} npm run -s buyer
+start buyer env FORECASTER_URL="$forecaster_url" BUYER_DB=./data/buyer-devnet.sqlite BUYER_DRY_RUN=${BUYER_DRY_RUN:-true} BUYER_PAYMENT_SCHEME=${BUYER_PAYMENT_SCHEME:-exact} ${buyer_telemetry[@]+"${buyer_telemetry[@]}"} npm run -s buyer
 [ "$public" = 1 ] || start web npm run -s web
 [ "$public" = 1 ] && cat data/public-urls.env
 echo "run-devnet: running. Ctrl-C stops all services."
