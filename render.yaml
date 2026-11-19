@@ -1,0 +1,29 @@
+# Render Blueprint for the public indexer that backs the Vercel dashboard (/api/* rewrite).
+services:
+  - type: web
+    name: delphi-indexer
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci --include=dev
+    startCommand: npm run start -w @delphi/indexer
+    disk:
+      name: indexer-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: INDEXER_SOURCE
+        value: rpc
+      - key: INDEXER_HOST
+        value: 0.0.0.0
+      - key: INDEXER_PORT
+        value: "10000"
+      - key: DELPHI_PROGRAM_ID
+        value: EVqrBtTWaQiwnrhXzDgqr5TML6oDpHqHs5jjeLLg42Qc
+      # Public devnet RPC rate-limits getProgramAccounts; 30 s keeps snapshots well under the dashboard's 180 s staleness limit.
+      - key: INDEXER_POLL_MS
+        value: "30000"
+      - key: STREAMS_WEBHOOK_SECRET
+        generateValue: true
+      - key: SOLANA_RPC_URL
+        sync: false
