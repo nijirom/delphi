@@ -59,18 +59,25 @@ start() { # name command...
   echo "run-render: started $name"
 }
 wait_port() { for _ in $(seq 1 90); do (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && return; sleep 1; done; echo "run-render: port $1 did not open" >&2; exit 1; }
-
-start facilitator reader env FACILITATOR_KEYPAIR="$cfg/facilitator.json" FACILITATOR_DB="$store/facilitator-devnet.sqlite" npm run -s facilitator
+# One node process per service (~150 MB each): `npm run` + the tsx CLI would add two more node processes each.
+# `env -C` runs each from its workspace directory, as `npm run -w` does.
+start facilitator reader env -C services/forecaster FACILITATOR_KEYPAIR="$cfg/facilitator.json" \
+  FACILITATOR_DB="$store/facilitator-devnet.sqlite" node --import tsx src/facilitator.ts
 wait_port 4050
-start forecaster env FORECASTER_URL="$public" FORECASTER_HOST=0.0.0.0 FORECASTER_PORT="$PORT" X402_FACILITATOR_URL=http://127.0.0.1:4050 \
-  FORECASTER_CHANNEL_AUTHORIZER_KEYPAIR="$cfg/channel-authorizer.json" FORECAST_BOND_MICRO_USDC="${FORECAST_BOND_MICRO_USDC:-20000}" \
-  FORECASTER_MARKET_LIMIT="${FORECASTER_MARKET_LIMIT:-6}" npm run -s forecaster
-start resolver npm run -s resolver
+start forecaster env -C services/forecaster FORECASTER_URL="$public" FORECASTER_HOST=0.0.0.0 FORECASTER_PORT="$PORT" \
+  X402_FACILITATOR_URL=http://127.0.0.1:4050 FORECASTER_CHANNEL_AUTHORIZER_KEYPAIR="$cfg/channel-authorizer.json" \
+  FORECAST_BOND_MICRO_USDC="${FORECAST_BOND_MICRO_USDC:-20000}" FORECASTER_MARKET_LIMIT="${FORECASTER_MARKET_LIMIT:-6}" \
+  node --import tsx src/index.ts
+start resolver env -C services/resolver node --import tsx src/index.ts
 wait_port 4040
-for i in 1 2; do start "signer-$i" reader npm run -s attest -- --keypair "$cfg/signers/signer-$i.json" --post http://127.0.0.1:4040 --watch --interval "${ATTEST_INTERVAL:-60}"; done
+for i in 1 2; do
+  start "signer-$i" reader node --import tsx scripts/attest.ts --keypair "$cfg/signers/signer-$i.json" --post http://127.0.0.1:4040 \
+    --watch --interval "${ATTEST_INTERVAL:-60}"
+done
 # The buyer only pays URLs on FORECASTER_URL's origin, so it uses the same public URL the listings carry.
-start buyer env FORECASTER_URL="$public" BUYER_DB="$store/buyer-devnet.sqlite" BUYER_DRY_RUN="${BUYER_DRY_RUN:-true}" \
-  BUYER_PAYMENT_SCHEME="${BUYER_PAYMENT_SCHEME:-exact}" INDEXER_URL="$TELEMETRY_INDEXER_URL" STREAMS_WEBHOOK_SECRET="$TELEMETRY_INDEXER_SECRET" npm run -s buyer
+start buyer env -C agents/buyer FORECASTER_URL="$public" BUYER_DB="$store/buyer-devnet.sqlite" BUYER_DRY_RUN="${BUYER_DRY_RUN:-true}" \
+  BUYER_PAYMENT_SCHEME="${BUYER_PAYMENT_SCHEME:-exact}" INDEXER_URL="$TELEMETRY_INDEXER_URL" \
+  STREAMS_WEBHOOK_SECRET="$TELEMETRY_INDEXER_SECRET" node --import tsx src/index.ts
 echo "run-render: running at $public"
 wait -n
 echo "run-render: a service exited; stopping the stack so Render restarts it" >&2

@@ -34,7 +34,8 @@ services:
   - type: web
     name: delphi-stack
     runtime: node
-    plan: starter
+    # Six Node services at ~150 MB each exceed Starter's 512 MB.
+    plan: standard
     branch: main
     buildCommand: npm ci --include=dev
     startCommand: bash scripts/run-render.sh
