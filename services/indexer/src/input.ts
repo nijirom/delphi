@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export type TokenBalance = { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { amount: string; decimals: number } };
 export type Row = { signature: string; slot: number; blockTime: number | null; logMessages: string[]; err: unknown; accountKeys: unknown[]; preTokenBalances: TokenBalance[]; postTokenBalances: TokenBalance[] };
@@ -51,6 +51,18 @@ export function authorized(expected: string, actual: unknown): boolean {
   const digest = (s: string) => createHash('sha256').update(s).digest();
   return timingSafeEqual(digest(expected), digest(actual));
 }
+/**
+ * QuickNode Streams signs `nonce + timestamp + body` with HMAC-SHA256 keyed by the Stream's security token
+ * (headers x-qn-nonce, x-qn-timestamp, x-qn-signature). `body` is the decoded (un-gzipped) UTF-8 payload.
+ * Deliveries older or newer than `maxSkewSeconds` are refused so a captured request cannot be replayed later.
+ */
+export function quicknodeSignatureValid(token: string, body: string, nonce: unknown, timestamp: unknown, signature: unknown, nowMs = Date.now(), maxSkewSeconds = 300): boolean {
+  if (!token.trim() || typeof nonce !== 'string' || typeof timestamp !== 'string' || typeof signature !== 'string' || !/^[0-9a-f]{64}$/i.test(signature) || !/^\d{1,16}$/.test(timestamp)) return false;
+  const raw = Number(timestamp), seconds = raw > 1e12 ? raw / 1000 : raw;
+  if (Math.abs(nowMs / 1000 - seconds) > maxSkewSeconds) return false;
+  const expected = createHmac('sha256', token).update(nonce + timestamp + body, 'utf8').digest();
+  return timingSafeEqual(expected, Buffer.from(signature, 'hex'));
+}
 export function eventKind(name: string): string | undefined {
   return ({ forecastposted: 'forecast_posted', purchaserecorded: 'purchase_recorded', marketresolved: 'market_resolved', forecastscored: 'forecast_scored' } as Record<string, string>)[name.replaceAll('_', '').toLowerCase()];
 }
@@ -64,6 +76,10 @@ export function tokenReceipts(row: Row, mint: string, owners: ReadonlySet<string
     }
   }
   return [...totals].filter(([, amount]) => amount > 0n).map(([owner, amount]) => ({ owner, amount }));
+}
+export function streamsDeliveryState(deliveries: number, lastAt: number | null, now = Date.now(), staleAfterMs = 180000): 'no_deliveries' | 'receiving' | 'stale' {
+  if (deliveries === 0 || lastAt === null) return 'no_deliveries';
+  return now - lastAt >= staleAfterMs ? 'stale' : 'receiving';
 }
 const stages = new Set(['scan', 'buy', 'aggregate', 'decide', 'approve', 'trade', 'skip', 'error']);
 export function telemetry(input: unknown): { ts: number; stage: string; instrumentSymbol?: string; detail: Obj } {

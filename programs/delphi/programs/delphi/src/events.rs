@@ -28,7 +28,9 @@ pub struct MarketResolved {
 pub struct ForecastScored {
     pub forecast: Pubkey,
     pub forecaster: Pubkey,
+    /// Revealed probability; 0 when forfeited.
     pub prob_bps: u16,
+    pub forfeited: bool,
     pub brier_bps: u32,
     pub reputation_bps: u16,
 }

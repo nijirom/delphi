@@ -12,7 +12,8 @@ flowchart LR
   F[Forecaster service<br/>3 personas, x402-paid reads]
   P[(Delphi program<br/>Solana devnet)]
   B[Buyer agent<br/>decision loop + guardrails]
-  R[Resolver<br/>oracle authority]
+  R[Resolver<br/>relays signer quorum]
+  Q[Settlement signers<br/>2-of-3 Ed25519]
   S[QuickNode Streams]
   I[Indexer<br/>SQLite + SSE]
   W[Dashboard]
@@ -26,8 +27,9 @@ flowchart LR
   G -- market data --> B
   B -- place order --> G
   B -- large trade --> V
-  G -- settled --> R
-  R -- resolve_market / reveal_and_score --> P
+  G -- settled --> Q
+  Q -- attestations --> R
+  R -- resolve / reveal / forfeit --> P
   P -- program logs --> S
   S -- webhook --> I
   B -- telemetry --> I
@@ -38,11 +40,13 @@ flowchart LR
 
 | Path | Role |
 | --- | --- |
-| `programs/delphi` | Anchor program: forecaster registry, commit–reveal forecasts, purchases, market resolution, Brier scoring, reputation. |
+| `programs/delphi` | Anchor program: forecaster registry, commit–reveal forecasts, purchases, market resolution, Brier scoring, forfeit, reputation. |
 | `packages/shared` | Gemini client, pooling math, PDA helpers, `DelphiProgram` client, env loading. |
 | `services/forecaster` | Express + `@x402/express`. Posts commitments on-chain, sells reveals per read. |
 | `agents/buyer` | The agent. Scans, buys, pools, decides, gets approval, trades. |
-| `services/resolver` | Reads Gemini settlements, resolves markets, reveals and scores forecasts. |
+| `services/resolver` | Relays settlement-signer attestations to resolve markets, reveals forecasts it holds, forfeits the rest an hour later, and sweeps bonds. |
+| `scripts/attest.ts` | One settlement signer: reads Gemini itself and signs settled outcomes with its own key. |
+| `scripts/publish-forecast.ts` | Third-party publishing: register, commit and upload a wallet-signed reveal without sharing a key. |
 | `services/indexer` | QuickNode Streams webhook (or RPC poller) → SQLite → REST/SSE. |
 | `apps/web` | Leaderboard, live feed, per-market view. |
 
@@ -65,28 +69,52 @@ sold with each read says so.
 A forecast sold off-chain cannot be public on-chain or nobody would pay for it.
 Each forecast is stored on-chain as `sha256(prob_bps ‖ salt)`. Buyers receive
 `prob_bps` and `salt` in the paid payload. After the market resolves, *anyone*
-holding the reveal can call `reveal_and_score`. Forecasters cannot hide bad
-calls; buyers can force scoring of what they paid for.
+holding the reveal can call `reveal_and_score` once the market resolves. One
+hour later, anyone can call `forfeit_forecast` on a commitment that is still
+unrevealed; it scores Brier 10000, the worst score. Forecasters cannot hide a
+bad call by staying silent, and buyers can force the true score of what they
+paid for before that window closes.
+
+The resolver uses the recent-settlement feed as a fast path, then looks up the
+exact event for each unmatched on-chain market. An outage longer than the
+feed's coverage must not strand an older market. Direct lookups are grouped by
+event ticker; only an exact contract match with a settled/resolved status and
+a Yes/No outcome can resolve it. Forfeiture uses the Solana chain clock.
+A reveal that wins a race with forfeiture is already terminal, not a retry
+failure.
 
 ## On-chain state
 
 | Account | Seeds | Purpose |
 | --- | --- | --- |
-| `Config` | `["config"]` | Oracle authority allowed to resolve markets. |
+| `Config` | `["config"]` | Bootstrap authority that initializes the settlement and bond configs once. It cannot resolve markets. |
+| `SettlementConfig` | `["settlement_config"]` | Immutable 2–5 signer set and threshold (≥ 2). |
 | `Forecaster` | `["forecaster", authority]` | Name, price per read, reads, Brier sum, `reputation_bps`. |
 | `Market` | `["market", sha256(instrument_symbol)]` | Gemini instrument, resolution outcome. |
-| `Forecast` | `["forecast", forecaster, market_hash]` | Commitment, reads, revealed prob, Brier. |
+| `Forecast` | `["forecast", forecaster, market_hash]` | Commitment, reads, revealed probability, forfeit flag, Brier. |
 | `Purchase` | `["purchase", forecast, buyer]` | Amount, x402 settlement signature. |
+| `BondConfig` | `["bond_config"]` | Immutable bond mint and slash treasury token account. |
+| `ForecastBond` / vault | `["forecast_bond", forecast]` / `["bond_vault", forecast]` | Escrowed USDC, depositor's refund account, settled/slashed flags. |
 
-Scoring: `brier_bps = (prob_bps - outcome*10000)^2 / 10000`,
-`reputation_bps = 10000 - brier_sum_bps / scored_count` (5000 before any score).
+`resolve_market` reads the instructions sysvar and counts preceding Ed25519
+precompile instructions whose key, signature and 32-byte message all lie inside
+that instruction, whose key is in the signer set, and whose message is
+`sha256("delphi:settlement:v1" ‖ program ‖ settlement_config ‖ market ‖ outcome)`.
+Duplicates and outsiders are rejected; fewer than `threshold` distinct signers
+fail. A bond settles once, only after its forecast is revealed (refund to the
+depositor's recorded account) or forfeited (slash to the treasury).
+
+Scoring: `brier_bps = (prob_bps - outcome*10000)^2 / 10000`. Reputation uses
+integer division and shrinks toward a 5000 Brier prior of weight 5:
+`reputation_bps = 10000 - (brier_sum_bps + 5*5000) / (scored_count + 5)`
+(5000 before any score). A forfeit adds 10000 to the Brier sum.
 
 ## Buyer agent decision loop
 
 Each tick (30 s):
 
 1. **scan** — list active binary Gemini contracts expiring in [2 min, 24 h] with a
-   quotable mid price.
+   bid or ask.
 2. **buy** — fetch the free listing for the symbol, keep forecasters with
    `reputation_bps ≥ BUYER_MIN_FORECASTER_REPUTATION_BPS` and
    `price ≤ BUYER_MAX_READ_PRICE_USDC`, sorted by reputation, until the
@@ -94,17 +122,22 @@ Each tick (30 s):
    devnet USDC; the settlement signature is recorded on-chain with
    `record_purchase`.
 3. **aggregate** — reputation-weighted log-odds pooling of purchased forecasts.
-4. **decide** — compare pooled probability to the Gemini mid. Skip unless
-   `|edge| ≥ BUYER_EDGE_THRESHOLD`. Size with capped fractional Kelly, bounded by
+4. **decide** — refresh the candidate's exact parent event, regardless of its
+   catalog page. Compare pooled probability with the executable Yes ask or
+   No ask derived from the Yes bid, including fees; require
+   `edge ≥ BUYER_EDGE_THRESHOLD`. Size with capped fractional Kelly, bounded by
    per-market budget, `BUYER_MAX_POSITION_USDC`, and remaining daily budget.
+   Contract expiry falls back to the parent event's expiry and is checked both
+   before sizing and after authorization.
 5. **approve** — tiered: `< BUYER_AUTO_APPROVE_BELOW_USDC` auto;
    `< BUYER_VOICE_APPROVE_ABOVE_USDC` notify and proceed; otherwise an ElevenLabs
    voice agent calls the approver and the trade proceeds only on an explicit
    spoken "yes" (terminal prompt fallback when voice is not configured; timeout
    is a denial).
-6. **trade** — Gemini limit IOC order (`BUYER_DRY_RUN=true` logs instead).
+6. **trade** — Gemini limit IOC order. `BUYER_DRY_RUN=true` skips payments and trades.
 7. **reveal** — once a purchased market resolves, call `reveal_and_score` for
-   each purchased forecast so forecasters are scored even if they go quiet.
+   each purchased forecast. A forecast already forfeited is terminal; the buyer
+   stops retrying it.
 
 Every stage emits telemetry to the indexer. Full limits and the kill switch are
 in [guardrails.md](./guardrails.md).
@@ -120,12 +153,15 @@ environments without a QuickNode account.
 
 ## Trust assumptions (hackathon scope)
 
-- The resolver holds the oracle key and mirrors Gemini's `resolutionSide`.
-  Production would use a multisig or an attestation of Gemini's settlement.
+- Settlement needs `threshold` of the configured signers to agree. Each signer
+  reads Gemini independently; a single compromised key, or the resolver host,
+  cannot resolve a market. The signer set is immutable once initialized.
 - `record_purchase` is signed by the buyer and carries the x402 settlement
   signature; the indexer cross-checks USDC transfers. Nothing stops a buyer from
   recording a purchase it did not pay for, but it gains nothing by doing so —
   reads only affect leaderboard volume, not reputation.
-- Forecast quality is scored only on revealed forecasts; a forecaster that sells
-  nothing on a market is never scored on it. Buyers can reveal anything they
-  bought.
+- Forecast quality is scored on every resolved forecast that was posted.
+  Reveals use the committed probability; anything still unrevealed an hour
+  later is forfeited at the worst Brier. A forecaster that never posts on a
+  market is not scored on it. Buyers can reveal anything they bought before
+  the window closes.

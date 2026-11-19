@@ -1,4 +1,9 @@
+pub mod settlement;
+pub mod bond;
+pub use settlement::*;
+pub use bond::*;
 pub mod init_market;
+pub mod forfeit_forecast;
 pub mod initialize;
 pub mod post_forecast;
 pub mod record_purchase;
@@ -8,6 +13,7 @@ pub mod reveal_and_score;
 pub mod update_forecaster;
 
 pub use init_market::*;
+pub use forfeit_forecast::*;
 pub use initialize::*;
 pub use post_forecast::*;
 pub use record_purchase::*;

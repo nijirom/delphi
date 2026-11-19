@@ -8,6 +8,92 @@
   },
   "instructions": [
     {
+      "name": "bond_forecast",
+      "discriminator": [
+        183,
+        13,
+        125,
+        33,
+        67,
+        152,
+        160,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bond_config"
+        },
+        {
+          "name": "forecaster"
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "forecast"
+        },
+        {
+          "name": "forecast_bond",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "source",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "forfeit_forecast",
+      "discriminator": [
+        214,
+        47,
+        104,
+        15,
+        84,
+        212,
+        204,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "forecast",
+          "writable": true
+        },
+        {
+          "name": "forecaster",
+          "writable": true
+        },
+        {
+          "name": "market"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "init_market",
       "discriminator": [
         33,
@@ -67,6 +153,85 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "initialize_bonds",
+      "discriminator": [
+        236,
+        114,
+        6,
+        146,
+        128,
+        248,
+        149,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "bond_config",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "treasury"
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_settlement",
+      "discriminator": [
+        191,
+        74,
+        191,
+        116,
+        131,
+        68,
+        90,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "settlement_config",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "threshold",
+          "type": "u8"
+        },
+        {
+          "name": "signers",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "post_forecast",
@@ -217,11 +382,10 @@
       ],
       "accounts": [
         {
-          "name": "authority",
-          "signer": true
+          "name": "settlement_config"
         },
         {
-          "name": "config"
+          "name": "instructions"
         },
         {
           "name": "market",
@@ -277,6 +441,46 @@
       ]
     },
     {
+      "name": "settle_forecast_bond",
+      "discriminator": [
+        132,
+        35,
+        4,
+        191,
+        137,
+        61,
+        48,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "bond_config"
+        },
+        {
+          "name": "forecast"
+        },
+        {
+          "name": "forecast_bond",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "update_forecaster",
       "discriminator": [
         111,
@@ -308,6 +512,19 @@
   ],
   "accounts": [
     {
+      "name": "BondConfig",
+      "discriminator": [
+        142,
+        20,
+        216,
+        1,
+        7,
+        142,
+        247,
+        125
+      ]
+    },
+    {
       "name": "Config",
       "discriminator": [
         155,
@@ -331,6 +548,19 @@
         165,
         123,
         36
+      ]
+    },
+    {
+      "name": "ForecastBond",
+      "discriminator": [
+        62,
+        57,
+        217,
+        205,
+        78,
+        99,
+        254,
+        161
       ]
     },
     {
@@ -371,9 +601,48 @@
         8,
         67
       ]
+    },
+    {
+      "name": "SettlementConfig",
+      "discriminator": [
+        205,
+        26,
+        40,
+        112,
+        76,
+        134,
+        3,
+        14
+      ]
     }
   ],
   "events": [
+    {
+      "name": "BondDeposited",
+      "discriminator": [
+        210,
+        149,
+        47,
+        232,
+        72,
+        128,
+        248,
+        153
+      ]
+    },
+    {
+      "name": "BondSettled",
+      "discriminator": [
+        187,
+        150,
+        172,
+        212,
+        229,
+        119,
+        165,
+        123
+      ]
+    },
     {
       "name": "ForecastPosted",
       "discriminator": [
@@ -472,9 +741,118 @@
       "code": 6008,
       "name": "InvalidPayment",
       "msg": "Payment amount or transaction signature is invalid"
+    },
+    {
+      "code": 6009,
+      "name": "Forfeited",
+      "msg": "Forecast was forfeited after the reveal window closed"
+    },
+    {
+      "code": 6010,
+      "name": "RevealWindowOpen",
+      "msg": "Reveal window is still open"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidThreshold",
+      "msg": "Settlement requires a threshold of at least two distinct authorized signers"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidAttestation",
+      "msg": "Settlement attestation is missing, malformed, duplicated, or bound to different data"
+    },
+    {
+      "code": 6013,
+      "name": "InsufficientAttestations",
+      "msg": "Settlement signer threshold was not met"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidBondAmount",
+      "msg": "Bond amount must be positive"
+    },
+    {
+      "code": 6015,
+      "name": "BondAlreadySettled",
+      "msg": "Forecast bond was already settled"
+    },
+    {
+      "code": 6016,
+      "name": "BondNotTerminal",
+      "msg": "Forecast must be revealed or forfeited before its bond can settle"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidBondAccount",
+      "msg": "Bond token account, mint, owner, or recipient is invalid"
     }
   ],
   "types": [
+    {
+      "name": "BondConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BondDeposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BondSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "slashed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
     {
       "name": "Config",
       "docs": [
@@ -486,7 +864,7 @@
           {
             "name": "authority",
             "docs": [
-              "Oracle allowed to resolve markets."
+              "Bootstrap authority for the immutable settlement and bond configurations."
             ],
             "type": "pubkey"
           },
@@ -545,6 +923,13 @@
             "type": "bool"
           },
           {
+            "name": "forfeited",
+            "docs": [
+              "Unrevealed past `REVEAL_WINDOW_SECS` and scored at the worst Brier by anyone."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "prob_bps",
             "docs": [
               "0 until revealed."
@@ -557,6 +942,42 @@
               "0 until scored."
             ],
             "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ForecastBond",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "forecast",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "refund_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "settled",
+            "type": "bool"
+          },
+          {
+            "name": "slashed",
+            "type": "bool"
           },
           {
             "name": "bump",
@@ -609,7 +1030,14 @@
           },
           {
             "name": "prob_bps",
+            "docs": [
+              "Revealed probability; 0 when forfeited."
+            ],
             "type": "u16"
+          },
+          {
+            "name": "forfeited",
+            "type": "bool"
           },
           {
             "name": "brier_bps",
@@ -660,14 +1088,14 @@
           {
             "name": "brier_sum_bps",
             "docs": [
-              "Sum of `brier_bps` over scored forecasts."
+              "Sum of `brier_bps` over scored (revealed or forfeited) forecasts."
             ],
             "type": "u64"
           },
           {
             "name": "reputation_bps",
             "docs": [
-              "`10000 - brier_sum_bps / scored_count`; `DEFAULT_REPUTATION_BPS` until scored."
+              "See `constants::reputation_bps`; `DEFAULT_REPUTATION_BPS` until scored."
             ],
             "type": "u16"
           },
@@ -813,6 +1241,31 @@
           }
         ]
       }
+    },
+    {
+      "name": "SettlementConfig",
+      "docs": [
+        "Separate accounts preserve every pre-existing account layout on upgrade."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "threshold",
+            "type": "u8"
+          },
+          {
+            "name": "signers",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
     }
   ],
   "constants": [
@@ -829,7 +1282,7 @@
     {
       "name": "DEFAULT_REPUTATION_BPS",
       "docs": [
-        "Reputation assigned before a forecaster has any scored forecast."
+        "Reputation assigned before a forecaster has any scored forecast; equals the prior Brier mapped through `reputation_bps`."
       ],
       "type": "u16",
       "value": "5000"
@@ -850,9 +1303,30 @@
       "value": "[109, 97, 114, 107, 101, 116]"
     },
     {
+      "name": "PRIOR_BRIER_BPS",
+      "docs": [
+        "Prior Brier (bps) and its weight in pseudo-observations. Shrinks small samples toward 5000 so one lucky call cannot top the leaderboard."
+      ],
+      "type": "u64",
+      "value": "5000"
+    },
+    {
+      "name": "PRIOR_WEIGHT",
+      "type": "u64",
+      "value": "5"
+    },
+    {
       "name": "PURCHASE_SEED",
       "type": "bytes",
       "value": "[112, 117, 114, 99, 104, 97, 115, 101]"
+    },
+    {
+      "name": "REVEAL_WINDOW_SECS",
+      "docs": [
+        "Seconds after market resolution during which a forecast may be revealed. Afterwards anyone may forfeit it at the worst Brier."
+      ],
+      "type": "i64",
+      "value": "3600"
     }
   ]
 }

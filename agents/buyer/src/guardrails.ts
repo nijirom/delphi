@@ -22,8 +22,10 @@ export function orderPlan(c: GeminiContract, probability: number, budget: number
   if (!pi.isPositive() || !qi.isPositive()) return null;
   const candidates: { side: 'yes' | 'no'; price: Decimal; edge: number }[] = [];
   for (const side of ['yes', 'no'] as const) {
-    const raw = side === 'yes' ? c.prices.bestAsk : c.prices.bestBid === null ? null : new Decimal(1).minus(c.prices.bestBid).toString();
-    if (raw === null) continue;
+    // Gemini may omit a side entirely (undefined), not only send null; neither is a quote.
+    const ask = c.prices?.bestAsk, bid = c.prices?.bestBid;
+    const raw = side === 'yes' ? ask : bid == null ? null : new Decimal(1).minus(bid).toString();
+    if (raw == null || raw === '') continue;
     const price = new Decimal(raw).div(pi).ceil().mul(pi);
     if (!price.isFinite() || price.lte(0) || price.gte(1) || price.lt(c.priceMinimum)) continue;
     const effective = price.mul(new Decimal(1).plus(new Decimal(feeBps).div(10000)));
@@ -38,6 +40,9 @@ export function orderPlan(c: GeminiContract, probability: number, budget: number
   if (!Number.isSafeInteger(reserve)) return null;
   return { side: best.side, price: best.price.toFixed(), quantity: quantity.toFixed(), edge: best.edge, reserve };
 }
+export function hasQuotableBook(c: GeminiContract, feeBps: number): boolean {
+  return orderPlan(c, 0.99, 1e6, feeBps) !== null || orderPlan(c, 0.01, 1e6, feeBps) !== null;
+}
 export type ReadRow = { key: string; symbol: string; payload: string | null; recorded: number; revealed: number };
 export class Ledger {
   readonly db: Database.Database;
@@ -51,25 +56,80 @@ export class Ledger {
       amount INTEGER NOT NULL CHECK(amount>0), state TEXT NOT NULL DEFAULT 'reserved',
       payload TEXT, recorded INTEGER NOT NULL DEFAULT 0, revealed INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(kind,key));`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS bundles (
+      id TEXT PRIMARY KEY, payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'reserved',
+      attempts INTEGER NOT NULL DEFAULT 0, attempted_at INTEGER NOT NULL DEFAULT 0,
+      retry_at INTEGER NOT NULL DEFAULT 0, last_error TEXT);`);
+    const bundleColumns = new Set((this.db.prepare('PRAGMA table_info(bundles)').all() as { name: string }[]).map(x => x.name));
+    if (!bundleColumns.has('attempts')) this.db.exec('ALTER TABLE bundles ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+    if (!bundleColumns.has('attempted_at')) this.db.exec('ALTER TABLE bundles ADD COLUMN attempted_at INTEGER NOT NULL DEFAULT 0');
+    if (!bundleColumns.has('retry_at')) this.db.exec('ALTER TABLE bundles ADD COLUMN retry_at INTEGER NOT NULL DEFAULT 0');
+    if (!bundleColumns.has('last_error')) this.db.exec('ALTER TABLE bundles ADD COLUMN last_error TEXT');
   }
   reserve(kind: 'read' | 'trade', key: string, symbol: string, amount: number): boolean {
     if (!Number.isSafeInteger(amount) || amount <= 0) return false;
     return this.db.transaction(() => {
       const day = new Date().toISOString().slice(0,10);
       if (this.has(kind,key)) return false;
-      const daily = this.sum('day = ?', day), market = this.sum('symbol = ?', symbol);
+      const daily = this.sum('day = ?', day), market = this.sum('symbol = ? AND day = ?', symbol, day);
       const position = this.sum("symbol = ? AND kind = 'trade'",symbol);
       if (daily + amount > this.daily || market + amount > this.perMarket || (kind === 'trade' && position + amount > this.maxPosition)) return false;
       this.db.prepare('INSERT INTO reservations(kind,key,symbol,day,amount) VALUES(?,?,?,?,?)').run(kind,key,symbol,day,amount);
       return true;
     }).immediate();
   }
-  private sum(where: string, arg: string): number { return (this.db.prepare(`SELECT COALESCE(SUM(amount),0) AS n FROM reservations WHERE ${where}`).get(arg) as {n:number}).n; }
-  remaining(symbol: string): number { return Math.max(0, Math.min(this.daily-this.sum('day = ?',new Date().toISOString().slice(0,10)),this.perMarket-this.sum('symbol = ?',symbol))); }
+  private sum(where: string, ...args: string[]): number { return this.db.prepare<string[], {n:number}>(`SELECT COALESCE(SUM(amount),0) AS n FROM reservations WHERE ${where}`).get(...args)!.n; }
+  remaining(symbol: string): number { const day = new Date().toISOString().slice(0,10); return Math.max(0, Math.min(this.daily-this.sum('day = ?',day),this.perMarket-this.sum('symbol = ? AND day = ?',symbol,day))); }
   has(kind: string,key: string): boolean { return !!this.db.prepare('SELECT 1 FROM reservations WHERE kind=? AND key=?').get(kind,key); }
   saveRead(key: string,payload: unknown): void { this.db.prepare("UPDATE reservations SET payload=?,state='received' WHERE kind='read' AND key=?").run(JSON.stringify(payload),key); }
+  /** Only for reads that provably never broadcast a payment: the budget must not stay locked by a failed HTTP call. */
+  release(kind: 'read' | 'trade', key: string): void { this.db.prepare("DELETE FROM reservations WHERE kind=? AND key=? AND state='reserved'").run(kind,key); }
+  /** A payload that can never validate is terminal; retrying it every tick only produces noise. */
+  quarantine(key: string): void { this.db.prepare("UPDATE reservations SET state='unusable' WHERE kind='read' AND key=?").run(key); }
   mark(key: string, field: 'recorded'|'revealed'): void { this.db.prepare(`UPDATE reservations SET ${field}=1 WHERE kind='read' AND key=?`).run(key); }
   tradeResult(key: string, orderId: number): void { this.db.prepare("UPDATE reservations SET state='submitted',payload=? WHERE kind='trade' AND key=?").run(JSON.stringify({orderId}),key); }
-  reads(): ReadRow[] { return this.db.prepare("SELECT key,symbol,payload,recorded,revealed FROM reservations WHERE kind='read' AND payload IS NOT NULL").all() as ReadRow[]; }
+  reads(): ReadRow[] { return this.db.prepare("SELECT key,symbol,payload,recorded,revealed FROM reservations WHERE kind='read' AND payload IS NOT NULL AND state<>'unusable'").all() as ReadRow[]; }
+  reserveBundle(id: string, items: { key: string; symbol: string; amount: number }[], payload: unknown): boolean {
+    return this.db.transaction(() => {
+      if (this.db.prepare('SELECT 1 FROM bundles WHERE id=?').get(id)) return false;
+      // Throwing rolls back the entire group, including nested read reservations.
+      for (const item of items) if (!this.reserve('read', item.key, item.symbol, item.amount)) throw new Error('Bundle budget unavailable');
+      this.db.prepare('INSERT INTO bundles(id,payload) VALUES(?,?)').run(id, JSON.stringify(payload));
+      return true;
+    }).immediate();
+  }
+  saveBundle(id: string, payload: unknown): void { this.db.prepare('UPDATE bundles SET payload=? WHERE id=?').run(JSON.stringify(payload), id); }
+  pendingBundles(limit = 100, now = Date.now()): { id: string; payload: string }[] {
+    if (!Number.isSafeInteger(limit) || limit <= 0) return [];
+    return this.db.prepare("SELECT id,payload FROM bundles WHERE state='reserved' AND retry_at<=? ORDER BY retry_at,id LIMIT ?").all(now, limit) as { id: string; payload: string }[];
+  }
+  beginBundleAttempt(id: string, now: number): void {
+    this.db.transaction(() => {
+      const row = this.db.prepare('SELECT attempts FROM bundles WHERE id=? AND state=?').get(id, 'reserved') as { attempts: number } | undefined;
+      if (!row) return;
+      const retryAt = now + Math.min(21600000, 30000 * 2 ** Math.min(row.attempts, 9));
+      this.db.prepare('UPDATE bundles SET attempts=attempts+1,attempted_at=?,retry_at=?,last_error=? WHERE id=? AND state=?')
+        .run(now, retryAt, 'Channel recovery interrupted; reservations retained', id, 'reserved');
+    }).immediate();
+  }
+  bundleError(id: string, error: string): void {
+    this.db.prepare('UPDATE bundles SET last_error=? WHERE id=? AND state=?').run(error.slice(0, 240), id, 'reserved');
+  }
+  deferBundle(id: string, now: number, error: string): void {
+    this.beginBundleAttempt(id, now);
+    this.bundleError(id, error);
+  }
+  recordBundleDelivery(id: string, delivered: { key: string; payload: unknown }[]): void {
+    this.db.transaction(() => {
+      for (const item of delivered) this.saveRead(item.key, item.payload);
+    }).immediate();
+  }
+  finishBundle(id: string, delivered: { key: string; payload: unknown }[], missing: string[]): void {
+    this.db.transaction(() => {
+      for (const item of delivered) this.saveRead(item.key, item.payload);
+      for (const key of missing) this.release('read', key);
+      this.db.prepare("UPDATE bundles SET state='complete',last_error=NULL WHERE id=?").run(id);
+    }).immediate();
+  }
   close(): void { this.db.close(); }
 }

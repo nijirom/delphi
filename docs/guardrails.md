@@ -15,7 +15,8 @@ the file that enforces it is named so judges can check.
 | Trade on Gemini production | blocked unless `BUYER_ALLOW_LIVE_TRADING=true`; sandbox is the default private base |
 | Accept Gemini's prediction-market terms on a human's behalf | `GeminiClient.placeOrder` fails closed when `termsStatus().hasAcceptedLatest` is false; the agent never calls `acceptTerms` |
 | Place anything other than an immediate-or-cancel limit order with a bounded notional | `loop.ts` builds orders only through `orderPlan` |
-| Withdraw, transfer, or sign arbitrary transactions | the wallet is used only for x402 `exact` payments and the `record_purchase`/`reveal_and_score` instructions |
+| Withdraw, transfer, or sign arbitrary transactions | the wallet is used only for x402 `exact`/`upto` payments and the `record_purchase`/`reveal_and_score` instructions |
+| Authorize an `upto` ceiling above the verified on-chain prices, pay a different recipient or asset, sponsor the facilitator's fees, or accept a withdrawal lock over 5 min | `channels.ts` `allowedChannelQuote`; the bundle is reserved in full before signing, and only delivered reads are recorded |
 
 ## Spending limits
 
@@ -50,22 +51,34 @@ persists across restarts.
 
 Every 30 s (`loop.ts` `tick`):
 
-1. `scan` — active binary Gemini contracts expiring in 2 min – 24 h with a bid or ask.
-2. For each instrument, fetch the free listing. Keep forecasters above the
+1. `scan` — fetch the forecaster's listings once, then active binary Gemini
+   contracts expiring in 2 min – 24 h with a bid or ask. If either source is
+   down the scan stops with one `error` naming the cause (for example
+   `forecaster_http_503` or `gemini_http_429`) instead of one per market.
+2. For each instrument, keep forecasters above the
    reputation floor and below the read-price cap, one listing per forecaster
-   identity, sorted by reputation.
+   identity, sorted by reputation. When two or more eligible listings share a
+   forecaster, they are bought as one `upto` bundle first.
 3. `buy` — verify the listing against the chain, reserve the read, pay with
-   x402, persist the paid payload **before** validating it, check the reveal
-   against the on-chain commitment and the `PAYMENT-RESPONSE` settlement, then
-   `record_purchase` with the settlement signature.
+   x402, persist a `2xx` reveal **before** validating it (non-`2xx` error bodies
+   are discarded, and reservations that never broadcast a payment are released),
+   then check the reveal against the on-chain commitment and the
+   `PAYMENT-RESPONSE` settlement.
 4. `aggregate` — reputation-weighted log-odds pooling (`@delphi/shared` `pooledForecast`).
-5. `decide` — compare the pooled probability with the executable price; skip
-   below the edge threshold; size the order.
+5. `decide` — refresh the exact parent event and instrument, not the first page
+   of the catalog. Require an active, unresolved binary contract; inherit the
+   parent expiry only if the contract has none. Compare the pooled probability
+   with the executable price; skip below the edge threshold and size the order.
+   Recheck the two-minute expiry safety window after authorization, before
+   reserving trade budget. Failed refreshes and rejected candidates emit `skip`.
 6. `approve` — auto / notify / human tier as above.
 7. `trade` — Gemini limit IOC order, or `skip` when dry-run, credentials or
    terms are missing. `error` is emitted for any blocked or uncertain step.
-8. Reconcile: for purchased markets that have resolved, call
-   `reveal_and_score`; retry `record_purchase` if it did not land.
+8. Reconcile (once per tick): record unrecorded purchases while the market is
+   still open, and independently call `reveal_and_score` once a purchased market
+   has resolved — even if `record_purchase` could not land before resolution.
+   Payloads that cannot validate are quarantined instead of retried every tick;
+   a forecast already forfeited is terminal.
 
 Every stage is posted to the indexer (`/telemetry`) and shown on the dashboard.
 

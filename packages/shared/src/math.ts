@@ -20,6 +20,11 @@ export function brierBps(probBps: number, outcomeYes: boolean): number {
   if (!Number.isInteger(probBps) || probBps < 0 || probBps > 10000) throw new RangeError('Invalid probability basis points');
   return Math.floor((probBps - (outcomeYes ? 10000 : 0)) ** 2 / 10000);
 }
+/** Mirrors the program: `10000 - floor((brierSum + 5·5000) / (scored + 5))`; 5000 before any score. */
+export function reputationBps(brierSumBps: number, scoredCount: number): number {
+  if (!Number.isInteger(brierSumBps) || !Number.isInteger(scoredCount) || brierSumBps < 0 || scoredCount < 0) throw new RangeError('Invalid scoring totals');
+  return 10000 - Math.floor((brierSumBps + 5 * 5000) / (scoredCount + 5));
+}
 export function edge(pooled: number, marketYesPrice: number): { side: 'yes' | 'no'; edge: number } {
   for (const n of [pooled, marketYesPrice]) { finite(n); if (n < 0 || n > 1) throw new RangeError('Invalid probability'); }
   return { side: pooled > marketYesPrice ? 'yes' : 'no', edge: Math.abs(pooled - marketYesPrice) };

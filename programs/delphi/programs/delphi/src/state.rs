@@ -6,7 +6,7 @@ use crate::constants::{MAX_NAME_LEN, MAX_SYMBOL_LEN};
 #[account]
 #[derive(InitSpace)]
 pub struct Config {
-    /// Oracle allowed to resolve markets.
+    /// Bootstrap authority for the immutable settlement and bond configurations.
     pub authority: Pubkey,
     pub bump: u8,
 }
@@ -23,9 +23,9 @@ pub struct Forecaster {
     pub total_forecasts: u32,
     pub total_reads: u32,
     pub scored_count: u32,
-    /// Sum of `brier_bps` over scored forecasts.
+    /// Sum of `brier_bps` over scored (revealed or forfeited) forecasts.
     pub brier_sum_bps: u64,
-    /// `10000 - brier_sum_bps / scored_count`; `DEFAULT_REPUTATION_BPS` until scored.
+    /// See `constants::reputation_bps`; `DEFAULT_REPUTATION_BPS` until scored.
     pub reputation_bps: u16,
     pub bump: u8,
 }
@@ -56,6 +56,8 @@ pub struct Forecast {
     pub posted_at: i64,
     pub reads: u32,
     pub revealed: bool,
+    /// Unrevealed past `REVEAL_WINDOW_SECS` and scored at the worst Brier by anyone.
+    pub forfeited: bool,
     /// 0 until revealed.
     pub prob_bps: u16,
     /// 0 until scored.
@@ -73,5 +75,35 @@ pub struct Purchase {
     /// x402 settlement transaction signature bytes.
     pub payment_sig: [u8; 64],
     pub purchased_at: i64,
+    pub bump: u8,
+}
+
+/// Separate accounts preserve every pre-existing account layout on upgrade.
+#[account]
+#[derive(InitSpace)]
+pub struct SettlementConfig {
+    pub threshold: u8,
+    #[max_len(5)]
+    pub signers: Vec<Pubkey>,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct BondConfig {
+    pub mint: Pubkey,
+    pub treasury: Pubkey,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct ForecastBond {
+    pub forecast: Pubkey,
+    pub depositor: Pubkey,
+    pub refund_account: Pubkey,
+    pub amount: u64,
+    pub settled: bool,
+    pub slashed: bool,
     pub bump: u8,
 }

@@ -1,13 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { brierBps, clampProb, edge, kellyFraction, normalCdf, pooledForecast, probabilityAbove, realizedVolPerMinute } from './math.js';
-import { commitment, marketHash } from './solana.js';
-import { eventTickerFromSymbol, midPrice, type GeminiContract } from './gemini.js';
+import { brierBps, clampProb, edge, kellyFraction, normalCdf, pooledForecast, probabilityAbove, realizedVolPerMinute, reputationBps } from './math.js';
+import { commitment, marketHash, revealWindowClosed, REVEAL_WINDOW_SECS } from './solana.js';
+import { GeminiClient, eventTickerFromSymbol, midPrice, parseInstrumentSymbol, type GeminiContract } from './gemini.js';
 test('Brier mirrors integer program scoring', () => {
   assert.equal(brierBps(10000, true), 0); assert.equal(brierBps(0, true), 10000);
   assert.equal(brierBps(5000, false), 2500); assert.equal(brierBps(3333, true), 4444);
   assert.throws(() => brierBps(10001, true));
+  assert.equal(reputationBps(0, 0), 5000); assert.equal(reputationBps(900, 1), 5684); assert.equal(reputationBps(0, 1), 5834); assert.equal(reputationBps(50000, 100), 9286);
+  assert.equal(REVEAL_WINDOW_SECS, 3600);
+  assert.equal(revealWindowClosed(1_000, 1_000 + 3_599), false);
+  assert.equal(revealWindowClosed(1_000, 1_000 + 3_600), true);
+  assert.equal(revealWindowClosed(1.5, 10_000), false);
 });
 test('pooling and guardrail arithmetic', () => {
   assert.ok(Number.isNaN(pooledForecast([]).prob));
@@ -47,4 +52,30 @@ test('market quote parsing rejects empty and nonfinite quotes', () => {
   assert.equal(eventTickerFromSymbol('GEMI-HYPE2611132200-HI68'), 'HYPE2611132200');
   assert.equal(eventTickerFromSymbol('GEMI-NBA-2611160000-HOU-WAS-M-HOU'), 'NBA-2611160000-HOU-WAS-M');
   assert.equal(eventTickerFromSymbol('GEMI-SOLO'), 'SOLO');
+  const parsed = parseInstrumentSymbol('GEMI-BTC05M2611131905-UP');
+  assert.equal(parsed.asset, 'BTC');
+  assert.equal(parsed.windowLabel, '5m');
+  assert.equal(parsed.category, 'Crypto');
+  assert.equal(parsed.expiryDate, '2026-11-13T19:05:00.000Z');
+  assert.equal(parsed.outcomeLabel, 'Up');
+  assert.ok(parsed.fallbackTitle?.includes('BTC 5m'));
+  assert.equal(parseInstrumentSymbol('GEMI-HYPE2611132200-HI68').outcomeLabel, 'Above 68');
+  assert.equal(parseInstrumentSymbol('GEMI-TEST-UP').expiryDate, null);
+  assert.equal(parseInstrumentSymbol('GEMI-TEST-UP').fallbackTitle, null);
+});
+test('signed Gemini requests use strictly increasing nonces even within the same millisecond', async t => {
+  t.mock.method(Date, 'now', () => 1700000000000);
+  const nonces: number[] = [];
+  t.mock.method(globalThis, 'fetch', async (_input: string | URL | Request, init?: RequestInit) => {
+    const headers = init?.headers as Record<string, string>;
+    const decoded = JSON.parse(Buffer.from(headers['X-GEMINI-PAYLOAD'], 'base64').toString('utf8')) as { nonce: number; request: string };
+    nonces.push(decoded.nonce);
+    if (decoded.request.endsWith('/terms/status')) return Response.json({ hasAcceptedLatest: true });
+    return Response.json({ orderId: 1, status: 'filled', symbol: 'GEMI-TEST-UP', side: 'buy', outcome: 'yes', quantity: '1', filledQuantity: '1', price: '0.5', avgExecutionPrice: '0.5' });
+  });
+  const client = new GeminiClient({ publicBase: 'http://localhost:4999', privateBase: 'http://localhost:4999', apiKey: 'k', apiSecret: 's' });
+  await client.termsStatus();
+  await client.placeOrder({ symbol: 'GEMI-TEST-UP', side: 'buy', outcome: 'yes', quantity: '1', price: '0.5' });
+  assert.equal(nonces.length, 3);
+  assert.ok(nonces[0] >= 1700000000000 && nonces[1] > nonces[0] && nonces[2] > nonces[1]);
 });

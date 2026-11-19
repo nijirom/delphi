@@ -21,6 +21,22 @@ pub mod delphi {
         crate::instructions::initialize::handle_initialize(ctx)
     }
 
+    pub fn initialize_settlement(ctx: Context<InitializeSettlement>, threshold: u8, signers: Vec<Pubkey>) -> Result<()> {
+        crate::instructions::settlement::handle_initialize_settlement(ctx, threshold, signers)
+    }
+
+    pub fn initialize_bonds(ctx: Context<InitializeBonds>) -> Result<()> {
+        crate::instructions::bond::handle_initialize_bonds(ctx)
+    }
+
+    pub fn bond_forecast(ctx: Context<BondForecast>, amount: u64) -> Result<()> {
+        crate::instructions::bond::handle_bond_forecast(ctx, amount)
+    }
+
+    pub fn settle_forecast_bond(ctx: Context<SettleForecastBond>) -> Result<()> {
+        crate::instructions::bond::handle_settle_forecast_bond(ctx)
+    }
+
     pub fn register_forecaster(
         ctx: Context<RegisterForecaster>,
         name: String,
@@ -63,5 +79,9 @@ pub mod delphi {
         salt: [u8; 32],
     ) -> Result<()> {
         crate::instructions::reveal_and_score::handle_reveal_and_score(ctx, prob_bps, salt)
+    }
+
+    pub fn forfeit_forecast(ctx: Context<ForfeitForecast>) -> Result<()> {
+        crate::instructions::forfeit_forecast::handle_forfeit_forecast(ctx)
     }
 }

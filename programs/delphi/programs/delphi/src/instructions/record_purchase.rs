@@ -11,9 +11,10 @@ pub struct RecordPurchase<'info> {
     pub system_program:Program<'info,System>,
 }
 pub fn handle_record_purchase(ctx:Context<RecordPurchase>,amount:u64,payment_sig:[u8;64])->Result<()> {
-    require!(amount==ctx.accounts.forecast.price_per_read,ErrorCode::InvalidPayment);
+    require!(amount>0 && amount==ctx.accounts.forecast.price_per_read,ErrorCode::InvalidPayment);
     require!(payment_sig.iter().any(|b|*b!=0),ErrorCode::InvalidPayment);
     ctx.accounts.purchase.set_inner(Purchase { forecast:ctx.accounts.forecast.key(),buyer:ctx.accounts.buyer.key(),amount,payment_sig,purchased_at:Clock::get()?.unix_timestamp,bump:ctx.bumps.purchase });
-    ctx.accounts.forecast.reads+=1; ctx.accounts.forecaster.total_reads+=1;
+    ctx.accounts.forecast.reads=ctx.accounts.forecast.reads.saturating_add(1);
+    ctx.accounts.forecaster.total_reads=ctx.accounts.forecaster.total_reads.saturating_add(1);
     emit!(PurchaseRecorded { forecast:ctx.accounts.forecast.key(),forecaster:ctx.accounts.forecaster.key(),market:ctx.accounts.market.key(),buyer:ctx.accounts.buyer.key(),amount,payment_sig }); Ok(())
 }

@@ -10,12 +10,17 @@ test('market responses reject malformed nested chart and forecast values before 
     quote: { bestBid: 0.4, bestAsk: 0.6, lastTradePrice: null, mid: 0.5 }, quoteUpdatedAt: 1794544000000,
     forecasts: 1, revealed: 0, reads: 0, latestDecision: null,
     prices: [{ ts: 1794544000000, bid: 0.4, ask: 0.6, mid: 0.5 }],
-    forecastList: [{ forecastPda: 'forecast', forecasterPda: 'forecaster', forecasterName: 'sharp', reputationBps: 5000, pricePerReadUsdc: 0.01, reads: 0, postedAt: 1794544000000, revealed: false, probBps: null, brierBps: null }],
+    forecastList: [{ forecastPda: 'forecast', forecasterPda: 'forecaster', forecasterName: 'quant', reputationBps: 5000, pricePerReadUsdc: 0.01, reads: 0, postedAt: 1794544000000, revealed: false, forfeited: false, probBps: null, brierBps: null, bond: null }],
   };
   assert.equal(isDetail(detail), true);
   assert.equal(isDetail({ ...detail, prices: [null] }), false);
   assert.equal(isDetail({ ...detail, prices: [{ ...detail.prices[0], mid: 3 }] }), false);
   assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], pricePerReadUsdc: '0.01' }] }), false);
   assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], revealed: true, probBps: null }] }), false);
+  assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], forfeited: true, brierBps: 10000 }] }), true);
+  assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], forfeited: true, brierBps: null }] }), false);
+  assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], revealed: true, forfeited: true, probBps: 5000, brierBps: 2500 }] }), false);
+  assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], bond: { amountUsdc: 0.02, state: 'escrowed' } }] }), true);
+  assert.equal(isDetail({ ...detail, forecastList: [{ ...detail.forecastList[0], bond: { amountUsdc: 0.02, state: 'stolen' } }] }), false);
   assert.equal(isDetail({ ...detail, latestDecision: { stage: 'decide', ts: 1794544000000, detail: null } }), false);
 });

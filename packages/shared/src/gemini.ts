@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 export type GeminiContract = {
   id: string; label: string; ticker: string; instrumentSymbol: string; status: string;
   resolutionSide: 'yes' | 'no' | null; resolvedAt: string | null; expiryDate: string | null;
@@ -28,8 +29,60 @@ export function eventTickerFromSymbol(instrumentSymbol: string): string {
   const cut = body.lastIndexOf('-');
   return cut > 0 ? body.slice(0, cut) : body;
 }
+const symbolWindows: Record<string, string> = { '05M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '4H': '4h', '1D': '1d' };
+const symbolCategories: Record<string, string> = {
+  BTC: 'Crypto', ETH: 'Crypto', SOL: 'Crypto', XRP: 'Crypto', HYPE: 'Crypto', ZEC: 'Crypto', DOGE: 'Crypto', AVAX: 'Crypto', LINK: 'Crypto',
+  NBA: 'Sports', NFL: 'Sports', MLB: 'Sports', NHL: 'Sports', UFC: 'Sports', EPL: 'Sports', NCAAM: 'Sports', NCAAF: 'Sports', WNBA: 'Sports', MLS: 'Sports',
+  GDP: 'Economics', UNEMP: 'Economics', CPI: 'Economics', FED: 'Economics', FOMC: 'Economics',
+};
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export type ParsedInstrumentSymbol = {
+  /** `matchup` symbols carry two opposing legs under one event title; `cadence` symbols are repeating time-window contracts. */
+  kind: 'cadence' | 'matchup' | 'unknown';
+  asset: string | null; windowLabel: string | null; category: string | null;
+  expiryDate: string | null; outcomeLabel: string | null; fallbackTitle: string | null;
+};
+const unparsed: ParsedInstrumentSymbol = { kind: 'unknown', asset: null, windowLabel: null, category: null, expiryDate: null, outcomeLabel: null, fallbackTitle: null };
+export function parseInstrumentSymbol(instrumentSymbol: string): ParsedInstrumentSymbol {
+  const matchup = parseMatchupSymbol(instrumentSymbol);
+  if (matchup) return matchup;
+  const match = /^GEMI-([A-Z]{2,6}?)(?:(05M|15M|30M|1H|4H|1D))?(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-([A-Z0-9]+)$/.exec(instrumentSymbol);
+  if (!match) return unparsed;
+  const [, asset, rawWindow, yy, mm, dd, hh, min, suffix] = match;
+  const year = 2000 + Number(yy), month = Number(mm), day = Number(dd), hour = Number(hh), minute = Number(min);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return unparsed;
+  const ts = Date.UTC(year, month - 1, day, hour, minute);
+  const d = new Date(ts);
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return unparsed;
+  const windowLabel = rawWindow ? (symbolWindows[rawWindow] ?? null) : null;
+  const category = symbolCategories[asset] ?? null;
+  const outcomeLabel = suffix === 'UP' ? 'Up' : suffix === 'DOWN' ? 'Down'
+    : /^HI(\d+)$/.test(suffix) ? suffix.replace(/^HI(\d+)$/, 'Above $1')
+    : /^LO(\d+)$/.test(suffix) ? suffix.replace(/^LO(\d+)$/, 'Below $1')
+    : suffix;
+  const fallbackTitle = `${asset}${windowLabel ? ` ${windowLabel}` : ''} · ${monthNames[month - 1]} ${day}, ${hh}:${min} UTC`;
+  return { kind: 'cadence', asset, windowLabel, category, expiryDate: d.toISOString(), outcomeLabel, fallbackTitle };
+}
+/** `GEMI-<LEAGUE>-<YYMMDDHHmm>-<HOME>-<AWAY>-M-<SIDE>`: both legs of one game share a title, so the side is what distinguishes them. */
+function parseMatchupSymbol(instrumentSymbol: string): ParsedInstrumentSymbol | null {
+  const match = /^GEMI-([A-Z]{2,6})-(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-([A-Z]{2,5})-([A-Z]{2,5})-M-([A-Z]{2,5})$/.exec(instrumentSymbol);
+  if (!match) return null;
+  const [, league, yy, mm, dd, hh, min, home, away, side] = match;
+  const year = 2000 + Number(yy), month = Number(mm), day = Number(dd), hour = Number(hh), minute = Number(min);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  const d = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  if (d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return {
+    kind: 'matchup', asset: league, windowLabel: null, category: symbolCategories[league] ?? 'Sports', expiryDate: d.toISOString(),
+    outcomeLabel: side, fallbackTitle: `${home} vs ${away} · ${side} · ${monthNames[month - 1]} ${day}, ${hh}:${min} UTC`,
+  };
+}
+let lastNonce = 0;
+/** Millisecond nonces, forced to increase even when two signed requests land in the same millisecond. */
+function nextNonce(): number { lastNonce = Math.max(Date.now(), lastNonce + 1); return lastNonce; }
 export class GeminiClient {
-  constructor(private readonly opts: { publicBase: string; privateBase: string; apiKey?: string; apiSecret?: string }) {
+  /** `account` scopes a master (account-group) key to one sub-account, e.g. `primary`; single-account keys leave it unset. */
+  constructor(private readonly opts: { publicBase: string; privateBase: string; apiKey?: string; apiSecret?: string; account?: string }) {
     for (const base of [opts.publicBase, opts.privateBase]) {
       const u = new URL(base);
       if (u.username || u.password || u.search || u.hash || (u.protocol !== 'https:' && !(u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)))) throw new Error('Invalid Gemini base URL');
@@ -39,17 +92,33 @@ export class GeminiClient {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (authenticated) {
       if (!this.opts.apiKey || !this.opts.apiSecret) throw new Error('Gemini private API credentials are required');
-      const payload = Buffer.from(JSON.stringify({ ...body, request: path, nonce: Math.floor(Date.now() / 1000) })).toString('base64');
+      // Gemini requires a strictly increasing nonce per API key; two signed calls can share a wall-clock second.
+      const payload = Buffer.from(JSON.stringify({ ...body, ...(this.opts.account ? { account: this.opts.account } : {}), request: path, nonce: nextNonce() })).toString('base64');
       headers['X-GEMINI-APIKEY'] = this.opts.apiKey; headers['X-GEMINI-PAYLOAD'] = payload;
       headers['X-GEMINI-SIGNATURE'] = createHmac('sha384', this.opts.apiSecret).update(payload).digest('hex');
       headers['Content-Type'] = 'text/plain'; headers['Content-Length'] = '0';
       headers['Cache-Control'] = 'no-cache';
     }
-    let response: Response;
-    try { response = await fetch(new URL(path, authenticated ? this.opts.privateBase : this.opts.publicBase), { method, headers, redirect: 'error', signal: AbortSignal.timeout(20000) }); }
-    catch { throw new Error(`Gemini ${method} ${path.split('?')[0]} transport failed`); }
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`Gemini ${method} ${path.split('?')[0]} returned HTTP ${response.status}`); }
-    try { return await response.json() as T; } catch { throw new Error('Gemini returned invalid JSON'); }
+    // Public GETs are idempotent: a dropped connection, 429, 5xx or truncated/non-JSON body on one page must not abort a whole catalog walk.
+    // Signed requests are never retried; a replayed nonce would be rejected and an order must not be sent twice.
+    const attempts = method === 'GET' && !authenticated ? 3 : 1;
+    const route = `Gemini ${method} ${path.split('?')[0]}`;
+    for (let attempt = 1; ; attempt++) {
+      let failure: string;
+      let response: Response | undefined;
+      try { response = await fetch(new URL(path, authenticated ? this.opts.privateBase : this.opts.publicBase), { method, headers, redirect: 'error', signal: AbortSignal.timeout(20000) }); }
+      catch { response = undefined; }
+      if (!response) failure = `${route} transport failed`;
+      else if (!response.ok) {
+        await response.body?.cancel();
+        failure = `${route} returned HTTP ${response.status}`;
+        if (response.status !== 429 && response.status < 500) throw new Error(failure);
+      } else {
+        try { return await response.json() as T; } catch { failure = 'Gemini returned invalid JSON'; }
+      }
+      if (attempt >= attempts) throw new Error(failure);
+      await sleep(500 * 2 ** (attempt - 1));
+    }
   }
   async listEvents(q: { status?: string[]; category?: string[]; search?: string; limit?: number; offset?: number } = {}): Promise<EventsPage> {
     const params = new URLSearchParams();

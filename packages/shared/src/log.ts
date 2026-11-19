@@ -22,3 +22,19 @@ export function log(level: LogLevel, msg: string, fields?: Record<string, unknow
   const line = JSON.stringify({ ts: new Date().toISOString(), level, msg: clean(msg), ...(fields ? { fields: clean(fields) } : {}) });
   (level === 'error' ? process.stderr : process.stdout).write(line + '\n');
 }
+/**
+ * web3.js/Anchor leave some RPC promises (confirmation polling, websocket subscriptions) without a handler.
+ * A throttled or dropped RPC call there must not kill a long-running service: every operation that matters
+ * already has its own catch and retries next cycle. Anything else is a real bug and still terminates.
+ */
+export function surviveTransientRpcRejections(): void {
+  process.on('unhandledRejection', reason => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    if (/^(429|50[234]) |rate limit|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up/i.test(message)) {
+      log('warn', 'Transient RPC failure outside a request; continuing', { reason: message.slice(0, 80) });
+      return;
+    }
+    log('error', 'Unhandled rejection; exiting', { reason: message.slice(0, 200) });
+    process.exit(1);
+  });
+}

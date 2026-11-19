@@ -5,11 +5,13 @@ export type LeaderboardRow = { forecasterPda: string; authority: string; name: s
 export type AgentTelemetry = { ts: number; stage: 'scan' | 'buy' | 'aggregate' | 'decide' | 'approve' | 'trade' | 'skip' | 'error'; instrumentSymbol?: string; detail: Record<string, unknown> };
 
 export type MarketQuote = { bestBid: number | null; bestAsk: number | null; lastTradePrice: number | null; mid: number | null };
-export type MarketForecast = { forecastPda: string; forecasterPda: string; forecasterName: string; reputationBps: number; pricePerReadUsdc: number; reads: number; postedAt: number; revealed: boolean; probBps: number | null; brierBps: number | null };
+/** `brierBps` is set when revealed or forfeited; `probBps` only when revealed. `bond` is null when the forecaster posted none. */
+export type ForecastBondState = { amountUsdc: number; state: 'escrowed' | 'refunded' | 'slashed' };
+export type MarketForecast = { forecastPda: string; forecasterPda: string; forecasterName: string; reputationBps: number; pricePerReadUsdc: number; reads: number; postedAt: number; revealed: boolean; forfeited: boolean; probBps: number | null; brierBps: number | null; bond: ForecastBondState | null };
 export type MarketSummary = {
   instrumentSymbol: string; marketPda: string; eventTicker: string | null; title: string | null; category: string | null;
   expiryDate: string | null; geminiStatus: string | null; resolved: boolean; outcomeYes: boolean | null; resolvedAt: number | null;
-  quote: MarketQuote; quoteUpdatedAt: number | null; forecasts: number; revealed: number; reads: number; latestDecision: AgentTelemetry | null;
+  quote: MarketQuote; quoteUpdatedAt: number | null; forecasts: number; /** On-chain scores, including forfeitures. */ revealed: number; reads: number; latestDecision: AgentTelemetry | null;
 };
 export type PricePoint = { ts: number; bid: number | null; ask: number | null; mid: number | null };
 export type MarketDetail = MarketSummary & { prices: PricePoint[]; forecastList: MarketForecast[] };

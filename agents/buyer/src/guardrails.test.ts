@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Ledger, safeUrl, units, orderPlan } from './guardrails.js';
+import { Ledger, safeUrl, units, orderPlan, hasQuotableBook } from './guardrails.js';
 import type { GeminiContract } from '@delphi/shared';
 
 test('reservations survive reopen, duplicate and uncertain attempts cannot spend again',()=>{
@@ -31,4 +31,7 @@ test('order uses executable ask, rounded quantity and fee-inclusive reserve',()=
   const plan=orderPlan(contract,0.8,2,200);assert.ok(plan);assert.equal(plan.price,'0.61');assert.equal(plan.side,'yes');assert.ok(plan.reserve<=2000000);assert.ok(plan.edge<0.19);
   assert.equal(orderPlan({...contract,quantityIncrement:undefined},0.8,2,200),null);
   assert.equal(orderPlan(contract,0.6,2,200),null);
+  assert.equal(hasQuotableBook(contract,200),true);
+  assert.equal(hasQuotableBook({...contract,quantityIncrement:undefined},200),false);
+  assert.equal(hasQuotableBook({...contract,prices:{...contract.prices,bestAsk:null,bestBid:null}},200),false);
 });

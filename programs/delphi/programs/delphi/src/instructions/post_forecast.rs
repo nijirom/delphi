@@ -12,7 +12,7 @@ pub struct PostForecast<'info> {
     pub system_program:Program<'info,System>,
 }
 pub fn handle_post_forecast(ctx:Context<PostForecast>,commitment:[u8;32])->Result<()> {
-    ctx.accounts.forecast.set_inner(Forecast { forecaster:ctx.accounts.forecaster.key(),market:ctx.accounts.market.key(),commitment,price_per_read:ctx.accounts.forecaster.price_per_read,posted_at:Clock::get()?.unix_timestamp,reads:0,revealed:false,prob_bps:0,brier_bps:0,bump:ctx.bumps.forecast });
-    ctx.accounts.forecaster.total_forecasts+=1;
+    ctx.accounts.forecast.set_inner(Forecast { forecaster:ctx.accounts.forecaster.key(),market:ctx.accounts.market.key(),commitment,price_per_read:ctx.accounts.forecaster.price_per_read,posted_at:Clock::get()?.unix_timestamp,reads:0,revealed:false,forfeited:false,prob_bps:0,brier_bps:0,bump:ctx.bumps.forecast });
+    ctx.accounts.forecaster.total_forecasts=ctx.accounts.forecaster.total_forecasts.saturating_add(1);
     emit!(ForecastPosted{forecast:ctx.accounts.forecast.key(),forecaster:ctx.accounts.forecaster.key(),market:ctx.accounts.market.key(),commitment}); Ok(())
 }

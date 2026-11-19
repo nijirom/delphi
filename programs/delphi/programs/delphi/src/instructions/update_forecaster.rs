@@ -7,5 +7,6 @@ pub struct UpdateForecaster<'info> {
     pub forecaster:Account<'info,Forecaster>,
 }
 pub fn handle_update_forecaster(ctx:Context<UpdateForecaster>,price_per_read:u64)->Result<()> {
+    require!(price_per_read>0,ErrorCode::InvalidPayment);
     ctx.accounts.forecaster.price_per_read=price_per_read; Ok(())
 }

@@ -160,3 +160,36 @@ test('catalog backstop recovers symbols whose ticker convention the parser does 
     assert.equal(scans, 2);
   } finally { store.db.close(); }
 });
+
+test('cadence windows disambiguate identical event titles and uncached historical symbols receive fallback metadata', async t => {
+  const store = new Store(':memory:');
+  try {
+    const chain = new ChainIndexer(store, new PublicKey('EVqrBtTWaQiwnrhXzDgqr5TML6oDpHqHs5jjeLLg42Qc'), 'http://127.0.0.1:8899', fileURLToPath(new URL('../../../packages/shared/idl/delphi.json', import.meta.url)), '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', () => {});
+    chain.symbols.set('eth5m', 'GEMI-ETH05M2611130530-UP');
+    chain.symbols.set('eth15m', 'GEMI-ETH15M2611130530-UP');
+    chain.symbols.set('hist', 'GEMI-BTC05M2611131905-UP');
+    const gemini = new GeminiClient({ publicBase: 'https://api.gemini.com', privateBase: 'https://api.sandbox.gemini.com' });
+    t.mock.method(gemini, 'listEvents', async () => ({ data: [], pagination: { total: 0, limit: 100, offset: 0 } }));
+    t.mock.method(gemini, 'getEvent', async (ticker: string) => {
+      if (ticker === 'ETH05M2611130530' || ticker === 'ETH15M2611130530') {
+        const sym = `GEMI-${ticker}-UP`;
+        return {
+          ...activeEvent(ticker, [sym]),
+          title: 'ETH price today at 12:30am EST',
+          category: 'Crypto',
+          contracts: [{ ...activeEvent(ticker, [sym]).contracts[0]!, label: 'Up' }],
+        };
+      }
+      throw new Error('Historical event expired');
+    });
+    const markets = new Markets(store, chain, gemini);
+    const uncached = markets.detail('GEMI-BTC05M2611131905-UP')!;
+    assert.equal(uncached.category, 'Crypto');
+    assert.equal(uncached.expiryDate, '2026-11-13T19:05:00.000Z');
+    assert.equal(uncached.eventTicker, 'BTC05M2611131905');
+    assert.ok(uncached.title?.includes('BTC 5m'));
+    await markets.refresh();
+    assert.equal(markets.detail('GEMI-ETH05M2611130530-UP')!.title, 'ETH price today at 12:30am EST · 5m');
+    assert.equal(markets.detail('GEMI-ETH15M2611130530-UP')!.title, 'ETH price today at 12:30am EST · 15m');
+  } finally { store.db.close(); }
+});

@@ -35,12 +35,20 @@ export function isDetail(x: unknown): x is MarketDetail {
     && Array.isArray(detail.forecastList) && detail.forecastList.every((f: unknown) => object(f)
       && ['forecastPda', 'forecasterPda', 'forecasterName'].every(k => text(f[k]))
       && count(f.reputationBps) && f.reputationBps <= 10000 && finite(f.pricePerReadUsdc) && f.pricePerReadUsdc >= 0
-      && count(f.reads) && count(f.postedAt) && typeof f.revealed === 'boolean'
-      && (f.revealed ? count(f.probBps) && f.probBps <= 10000 && count(f.brierBps) && f.brierBps <= 10000 : f.probBps === null && f.brierBps === null));
+      && count(f.reads) && count(f.postedAt) && typeof f.revealed === 'boolean' && typeof f.forfeited === 'boolean' && !(f.revealed && f.forfeited)
+      && (f.revealed ? count(f.probBps) && f.probBps <= 10000 : f.probBps === null)
+      && (f.revealed || f.forfeited ? count(f.brierBps) && f.brierBps <= 10000 : f.brierBps === null)
+      && (f.bond === null || (object(f.bond) && finite(f.bond.amountUsdc) && f.bond.amountUsdc > 0 && text(f.bond.state) && ['escrowed', 'refunded', 'slashed'].includes(f.bond.state))));
 }
 
-export function isHealth(x: unknown): x is { ok: boolean; snapshotAt: number | null } {
-  return object(x) && typeof x.ok === 'boolean' && nullableTime(x.snapshotAt);
+export type Network = { cluster: 'devnet' | 'testnet' | 'mainnet-beta' | 'localnet' | 'custom'; programId: string };
+function isNetwork(x: unknown): x is Network {
+  return object(x) && text(x.cluster) && ['devnet', 'testnet', 'mainnet-beta', 'localnet', 'custom'].includes(x.cluster)
+    && text(x.programId) && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.programId);
+}
+export function isHealth(x: unknown): x is { ok: boolean; snapshotAt: number | null; network: Network | null } {
+  return object(x) && typeof x.ok === 'boolean' && nullableTime(x.snapshotAt)
+    && (isNetwork(x.network) || (!x.ok && x.network === null));
 }
 
 export async function get<T>(path: string, guard: (x: unknown) => x is T, signal?: AbortSignal): Promise<T> {
@@ -62,8 +70,10 @@ export const timeValue = (ts: number) => (ts < 1e12 ? ts * 1000 : ts);
 export const cents = (p: number | null | undefined) => (finite(p) ? `${(p * 100).toFixed(p * 100 < 10 ? 1 : 0)}¢` : '—');
 export const pct = (p: number) => `${(p * 100).toFixed(2)}%`;
 export const short = (s: string) => (s.length > 12 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s);
-export const txHref = (sig: string) => `https://explorer.solana.com/tx/${encodeURIComponent(sig)}?cluster=devnet`;
-export const addrHref = (addr: string) => `https://explorer.solana.com/address/${encodeURIComponent(addr)}?cluster=devnet`;
+export function explorerHref(kind: 'tx' | 'address', value: string, cluster: Network['cluster'] | undefined): string | undefined {
+  if (!cluster || cluster === 'localnet' || cluster === 'custom') return undefined;
+  return `https://explorer.solana.com/${kind}/${encodeURIComponent(value)}?cluster=${cluster}`;
+}
 export const marketHref = (symbol: string) => `#/market/${encodeURIComponent(symbol)}`;
 export function ago(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - timeValue(ts)) / 1000));

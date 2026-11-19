@@ -11,6 +11,12 @@
   ],
   "scripts": {
     "setup:devnet": "tsx scripts/setup-devnet.ts",
+    "launch:devnet": "bash scripts/launch-devnet.sh",
+    "expose": "bash scripts/expose.sh",
+    "devnet": "bash scripts/run-devnet.sh",
+    "attest": "tsx scripts/attest.ts",
+    "publish:forecast": "tsx scripts/publish-forecast.ts",
+    "facilitator": "npm run facilitator -w @delphi/forecaster",
     "forecaster": "npm run dev -w @delphi/forecaster",
     "indexer": "npm run dev -w @delphi/indexer",
     "resolver": "npm run dev -w @delphi/resolver",
