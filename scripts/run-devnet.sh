@@ -13,8 +13,12 @@ for f in "$cfg/facilitator.json" "$cfg/channel-authorizer.json" "$cfg/signers/si
   [ -f "$f" ] || { echo "run-devnet: missing $f" >&2; exit 1; }
 done
 # Shell overrides from earlier localnet sessions must not leak into a devnet run.
+# Same syntax the services' dotenv accepts: optional `export`, spaces around `=`, quoted values, CRLF files.
+dotenv() {
+  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=[[:space:]]*//p" .env 2>/dev/null | tail -1 | tr -d '\r' |
+    sed -E "s/[[:space:]]+\$//; s/^\"(.*)\"\$/\1/; s/^'(.*)'\$/\1/" || true
+}
 # Optional second endpoint for read-heavy services, so they don't share a free-tier rate limit with payments.
-dotenv() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 read_rpc=$(dotenv SOLANA_READ_RPC_URL)
 # Optional hosted indexer for buyer telemetry; its secret is that indexer's STREAMS_WEBHOOK_SECRET.
 telemetry_url=$(dotenv TELEMETRY_INDEXER_URL) telemetry_secret=$(dotenv TELEMETRY_INDEXER_SECRET)
