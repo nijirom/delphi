@@ -51,8 +51,9 @@ persists across restarts.
 
 Every 30 s (`loop.ts` `tick`):
 
-1. `scan` — fetch the forecaster's listings once, then active binary Gemini
-   contracts expiring in 2 min – 24 h with a bid or ask. If either source is
+1. `scan` — fetch the forecaster's listings once, then the active Gemini contracts
+   among them (binary contracts and outcome contracts of categorical events)
+   expiring in 2 min – 24 h with a bid or ask. If either source is
    down the scan stops with one `error` naming the cause (for example
    `forecaster_http_503` or `gemini_http_429`) instead of one per market.
 2. For each instrument, keep forecasters above the
@@ -66,7 +67,7 @@ Every 30 s (`loop.ts` `tick`):
    `PAYMENT-RESPONSE` settlement.
 4. `aggregate` — reputation-weighted log-odds pooling (`@delphi/shared` `pooledForecast`).
 5. `decide` — refresh the exact parent event and instrument, not the first page
-   of the catalog. Require an active, unresolved binary contract; inherit the
+   of the catalog. Require an active parent event and an active, unresolved contract; inherit the
    parent expiry only if the contract has none. Compare the pooled probability
    with the executable price; skip below the edge threshold and size the order.
    Recheck the two-minute expiry safety window after authorization, before

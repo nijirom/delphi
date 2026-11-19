@@ -113,8 +113,9 @@ integer division and shrinks toward a 5000 Brier prior of weight 5:
 
 Each tick (30 s):
 
-1. **scan** — list active binary Gemini contracts expiring in [2 min, 24 h] with a
-   bid or ask.
+1. **scan** — list active Gemini contracts with a forecaster listing, expiring in
+   [2 min, 24 h] with a bid or ask. Binary contracts and each outcome contract of a
+   categorical event qualify.
 2. **buy** — fetch the free listing for the symbol, keep forecasters with
    `reputation_bps ≥ BUYER_MIN_FORECASTER_REPUTATION_BPS` and
    `price ≤ BUYER_MAX_READ_PRICE_USDC`, sorted by reputation, until the
